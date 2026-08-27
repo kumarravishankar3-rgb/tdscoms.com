@@ -1,0 +1,150 @@
+{
+  "app_name": "Triveni Business Manager",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly readable, stable, and professional enterprise interface that prioritizes clear data presentation, trustworthy corporate aesthetics, and efficient task execution.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#09090B",
+    "surfaceSecondary": "#F4F4F5",
+    "onSurfaceSecondary": "#18181B",
+    "surfaceTertiary": "#E4E4E7",
+    "onSurfaceTertiary": "#27272A",
+    "surfaceInverse": "#09090B",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#0A5CFF",
+    "brandPrimary": "#0A5CFF",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#2563EB",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#DBEAFE",
+    "onBrandTertiary": "#1D4ED8",
+    "success": "#10B981",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#E4E4E7",
+    "borderStrong": "#D4D4D8",
+    "divider": "#F4F4F5"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Use native iOS comfortable vertical rhythms. Provide generous padding around enterprise content to avoid overly dense, cramped dashboards. Adhere strictly to these tokens.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Sticky headers over scrolling lists (Customer list, Task list)",
+      "Bottom tab bar when content scrolls behind it",
+      "Featured summary card overlay on the dashboard hero image"
+    ],
+    "dont's": [
+      "Form fields or text inputs",
+      "Standard list rows in the employee directory",
+      "Dense data tables in accounts"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "Provide a high-level summary of active tasks, urgent tenders, and attendance metrics.",
+      "states": {
+        "loading": "Centered spinner over the main canvas.",
+        "empty": "Illustration of a clean desk with a message indicating no immediate actions required today.",
+        "error": "Readable error message 'Unable to load dashboard' with a primary Retry CTA."
+      },
+      "layout": "Top section features a hero image of a professional office (using dashboard_hero URL) with a vertical gradient scrim (transparent to ≥70% surfaceInverse). A glass-effect summary card sits over the scrim displaying high-level metrics. Below this, a 2-column grid displays quick stats (Accounts, HR), followed by a list of 3 urgent tenders tagged with the red 'error' color token for urgency."
+    },
+    {
+      "name": "Business",
+      "purpose": "Central hub for managing the Customer Database and Accounts.",
+      "states": {
+        "loading": "Skeleton list rows matching the customer/invoice card shapes.",
+        "empty": "Abstract document illustration with text 'No business records yet' and a CTA to 'Add Customer'.",
+        "error": "Error reading database, with a retry button."
+      },
+      "layout": "A sticky segmented control at the top to toggle between 'Customers' and 'Accounts'. Customer list uses initial-avatars (fallback) or real company logos, with full-width cards. Accounts list emphasizes financial values using the green 'success' color for paid and red 'error' color for pending. A sticky FAB (glass or brandPrimary solid) at the bottom right for adding new records."
+    },
+    {
+      "name": "Tasks",
+      "purpose": "Manage assigned tasks, deadlines, and employee workloads.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Uses the 'empty_tasks' abstract 3D folder image. 'All caught up!' message with a CTA to assign a task.",
+        "error": "Network error with a retry button."
+      },
+      "layout": "Top tab filters for To-Do, Doing, Done. Task cards have a minimum 56pt height, incorporating checkboxes, assignee avatars, and priority badges. Use status-based grouping per Mobbin enterprise standards to improve glanceability. Sticky primary CTA to 'Create Task' at the bottom."
+    },
+    {
+      "name": "More",
+      "purpose": "Access point for the Tender Library, HR/Employee Directory, and App Settings.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Not applicable for settings index.",
+        "error": "Failed to load directory/tenders, with retry."
+      },
+      "layout": "Standard iOS native settings list structure. Grouped rows for 'Tender Library', 'HR & Directory', and 'Profile'. Every row features a leading icon inside a brandTertiary-tinted rounded square container, the title, and a trailing chevron. Navigation pushes to detail screens for specific modules."
+    }
+  ],
+  "images": {
+    "dashboard_hero": {
+      "url": "https://images.unsplash.com/photo-1715593949273-09009558300a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBpbmRpYW4lMjBvZmZpY2UlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc4NzgwMjczMnww&ixlib=rb-4.1.0&q=85",
+      "alt": "Professional modern office space background"
+    },
+    "empty_tasks": {
+      "url": "https://images.unsplash.com/photo-1647485684426-4e4a53cb87a9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1Mjh8MHwxfHNlYXJjaHwxfHwzZCUyMGlsbHVzdHJhdGlvbiUyMGZvbGRlciUyMGRvY3VtZW50JTIwYmx1ZXxlbnwwfHx8fDE3ODc4MDI3NDJ8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract blue 3D document folder indicating no active items"
+    }
+  },
+  "instructions_to_main_agent": [
+    "The user explicitly requested a 'Blue, Red, Green' scheme. Blue is permitted as the brand primary (Trust). Red must be used strictly for alerts/urgent tenders (error token). Green must be used for success/paid statuses (success token). Do not use these colors decoratively.",
+    "Implement the '1 iOS-Native Clean' personality. Avoid overly dense 'web dashboard' style layouts; ensure generous md/lg padding and single-column full-width cards or proper 2-column grids with space-between.",
+    "The Dashboard hero image MUST be overlaid with a top-to-bottom linear gradient scrim (transparent to >=70% surfaceInverse) to guarantee foreground text readability.",
+    "All interactive elements must respect a minimum touch target size of 44x44pt.",
+    "For the bottom navigation, use a maximum of 4 tabs: Dashboard, Business, Tasks, and More.",
+    "When displaying lists of customers or employees, always attempt to fetch real logos or avatars first. Use initial-based avatars strictly as a fallback.",
+    "Remember to include proper Loading, Empty, and Error states mapping exactly to the full screen flex view.",
+    "For sticky CTA buttons, wrap them in a fixed container outside the scrolling ScrollView and pad the bottom of the ScrollView appropriately."
+  ]
+}

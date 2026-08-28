@@ -1,35 +1,32 @@
-# PRD — Triveni Business Manager
+# PRD — TDSC Office Management System
 
-Enterprise mobile app for **Triveni DSC & e-Tender Service Private Limited** covering the six business modules requested by the customer.
+Enterprise mobile app for **Triveni DSC & e-Tender Service Private Limited** covering the six core business modules.
 
 ## Stack
-- Expo SDK 54 (React Native), Expo Router, TypeScript, `expo-secure-store`, `@expo/vector-icons`
+- Expo SDK 54 (React Native), Expo Router, TypeScript
 - FastAPI + Motor (MongoDB)
-- Auth: Email/password (bcrypt + session_token) + Emergent Google OAuth
+- Auth: Email/password (bcrypt) + Emergent Google OAuth
 - Storage: Emergent Managed Object Storage (tender documents)
 
 ## Roles
-`admin`, `manager`, `employee` — enforced on privileged mutations (create employee, decide leave, edit accounts).
+`admin`, `manager`, `employee` — enforced on privileged mutations.
 
-## Modules & Screens
-| Module | Screens |
+## Modules
+| Module | Notes |
 |---|---|
-| Dashboard | Hero + KPI grid + Urgent tenders + Quick actions |
-| Business  | Customers list, Accounts (invoice/expense), add flows |
-| Tasks     | Filterable list (all/todo/doing/done), toggle status, create |
-| More      | Profile, module launcher, logout |
-| Employees | List + add (admin/manager only) |
-| HR        | Attendance (check-in/out), Leaves (request + approve) |
-| Tenders   | List, detail, create, PDF/document upload via Object Storage |
+| Dashboard | KPIs, urgent tenders, quick actions |
+| Customers | 36-field contractor profile with auto Customer ID `TRV-CUST-0001…`; sections for eProc2, Railway, CPP, GST, EPFO, DSC, ISO, GEM, PMGSY & Other Portal credentials |
+| Employees | Directory + add (admin/manager) |
+| Tasks | Todo/Doing/Done pipeline |
+| Accounts | Invoice / Expense entries |
+| HR | Attendance check-in/out + Leave requests with approval |
+| Tenders | List / detail / document upload via Object Storage |
 
-## Auth flow
-- `/api/auth/signup` and `/api/auth/login` return `{session_token, user}` (7-day session).
-- Emergent Google: `WebBrowser.openAuthSessionAsync` on native, `window.location` on web, then `POST /api/auth/session {session_id}`.
-- Token stored in SecureStore (mobile) / localStorage (web).
+## Customer form mandatory fields
+Contractor Name, Mobile No., WhatsApp No., PAN No., Aadhar No. All other fields optional.
 
-## Object Storage
-- Backend `init_storage()` on startup, `PUT /objects/{path}` from `/api/tenders/{id}/upload`.
-- Downloads served by `/api/files/{path}` (Bearer or `?token=` for web `<img>`/openURL).
+## Auto ID
+Sequential `TRV-CUST-####` generated atomically via a MongoDB counter on insert.
 
 ## Test accounts
 See `/app/memory/test_credentials.md`.

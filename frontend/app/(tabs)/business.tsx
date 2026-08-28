@@ -64,10 +64,11 @@ export default function BusinessScreen() {
                   <Avatar name={item.name} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itemTitle}>{item.name}</Text>
-                    {item.company ? <Text style={styles.muted}>{item.company}</Text> : null}
-                    {item.phone ? <Text style={styles.muted}>{item.phone}</Text> : null}
+                    {item.customer_code ? <Text style={[styles.muted, { color: colors.brandPrimary, fontWeight: '700' }]}>{item.customer_code}</Text> : null}
+                    {item.mobile ? <Text style={styles.muted}>📱 {item.mobile}</Text> : null}
+                    {item.pan ? <Text style={styles.muted}>PAN: {item.pan}</Text> : null}
                   </View>
-                  {item.gst ? <View style={styles.gstTag}><Text style={styles.gstText}>GST</Text></View> : null}
+                  {item.gst_no ? <View style={styles.gstTag}><Text style={styles.gstText}>GST</Text></View> : null}
                 </View>
               </Card>
             )}

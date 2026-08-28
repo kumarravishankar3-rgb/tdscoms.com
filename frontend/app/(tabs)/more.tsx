@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -48,12 +48,12 @@ export default function MoreScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
           <View style={styles.row}>
-            <View style={[styles.rowIcon, { backgroundColor: colors.brandTertiary }]}>
-              <Ionicons name="business" size={20} color={colors.onBrandTertiary} />
+            <View style={[styles.rowIcon, { backgroundColor: colors.surface, padding: 2, borderWidth: 1, borderColor: colors.border }]}>
+              <Image source={require('../../assets/images/company-logo.jpg')} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Triveni DSC & e-Tender Service Pvt. Ltd.</Text>
-              <Text style={styles.muted}>Digital Signature & Tender Solutions</Text>
+              <Text style={styles.rowLabel}>TDSC Office Management System</Text>
+              <Text style={styles.muted}>Triveni DSC & e-Tender Service Pvt. Ltd.</Text>
             </View>
           </View>
         </View>

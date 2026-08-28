@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,9 +38,9 @@ export default function LoginScreen() {
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
           <LinearGradient colors={[colors.brandSecondary, colors.brandPrimary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
             <View style={styles.logo}>
-              <Ionicons name="business" size={28} color={colors.brandPrimary} />
+              <Image source={require('../assets/images/company-logo.jpg')} style={styles.logoImg} resizeMode="contain" />
             </View>
-            <Text style={styles.brand}>Triveni Business Manager</Text>
+            <Text style={styles.brand}>TDSC Office Management System</Text>
             <Text style={styles.brandSub}>Triveni DSC & e-Tender Service Pvt. Ltd.</Text>
           </LinearGradient>
 
@@ -109,7 +109,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceSecondary },
   header: { paddingHorizontal: spacing.xl, paddingTop: spacing.xxxl, paddingBottom: spacing.xxxl, alignItems: 'center' },
-  logo: { width: 60, height: 60, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+  logo: { width: 88, height: 88, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md, padding: 8 },
+  logoImg: { width: '100%', height: '100%' },
   brand: { color: colors.onBrandPrimary, fontSize: font.xxl, fontWeight: '800' },
   brandSub: { color: colors.onBrandPrimary, opacity: 0.85, marginTop: 4, fontSize: font.base },
   card: { backgroundColor: colors.surface, marginHorizontal: spacing.lg, marginTop: -spacing.xl, borderRadius: radius.lg, padding: spacing.xl, gap: spacing.md, borderWidth: 1, borderColor: colors.border },

@@ -48,8 +48,14 @@ export default function Dashboard() {
           <Image source={{ uri: HERO }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
           <LinearGradient colors={['transparent', 'rgba(9,9,11,0.85)']} style={StyleSheet.absoluteFillObject} />
           <SafeAreaView edges={['top']} style={styles.heroContent}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandLogo}>
+                <Image source={require('../../assets/images/company-logo.jpg')} style={{ width: '100%', height: '100%' }} contentFit="contain" />
+              </View>
+              <Text style={styles.brandTitle}>TDSC OMS</Text>
+            </View>
             <Text style={styles.hello} testID="dashboard-hello">Namaste, {user?.name?.split(' ')[0] || 'User'}</Text>
-            <Text style={styles.company}>Triveni DSC & e-Tender Service</Text>
+            <Text style={styles.company}>TDSC Office Management System</Text>
             <View style={styles.heroCard}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.heroCardTitle}>Today's overview</Text>
@@ -123,6 +129,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceSecondary },
   hero: { height: 240, overflow: 'hidden' },
   heroContent: { flex: 1, padding: spacing.xl, justifyContent: 'flex-end' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  brandLogo: { width: 40, height: 40, borderRadius: 10, backgroundColor: colors.surface, padding: 4, alignItems: 'center', justifyContent: 'center' },
+  brandTitle: { color: colors.onBrandPrimary, fontWeight: '800', fontSize: font.lg, letterSpacing: 0.4 },
   hello: { color: colors.onBrandPrimary, fontSize: font.xxl, fontWeight: '800' },
   company: { color: colors.onBrandPrimary, opacity: 0.9, fontSize: font.base, marginTop: 2 },
   heroCard: { marginTop: spacing.lg, backgroundColor: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.3)', borderWidth: 1, borderRadius: radius.md, padding: spacing.lg, flexDirection: 'row', alignItems: 'center' },

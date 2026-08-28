@@ -14,6 +14,7 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException, Header, UploadFi
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, EmailStr
 from starlette.middleware.cors import CORSMiddleware
 
@@ -120,13 +121,66 @@ class AuthResponse(BaseModel):
 
 class Customer(BaseModel):
     id: str = Field(default_factory=lambda: new_id("cus"))
-    name: str
-    company: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    gst: Optional[str] = None
-    pan: Optional[str] = None
+    customer_code: Optional[str] = None  # auto TRV-CUST-0001
+
+    # Basic (mandatory: name, mobile, whatsapp, pan, aadhar)
+    name: str  # Contractor name
     address: Optional[str] = None
+    mobile: str
+    whatsapp: str
+    email: Optional[str] = None
+    pan: str
+    aadhar: str
+
+    # eproc2
+    eproc2_user_id: Optional[str] = None
+    eproc2_password: Optional[str] = None
+    eproc2_email: Optional[str] = None
+
+    # Railway
+    railway_user_id: Optional[str] = None
+    railway_password: Optional[str] = None
+    railway_email: Optional[str] = None
+
+    # CPP
+    cpp_user_id: Optional[str] = None
+    cpp_password: Optional[str] = None
+    cpp_email: Optional[str] = None
+
+    # GST
+    gst_no: Optional[str] = None
+    gst_password: Optional[str] = None
+    gst_email: Optional[str] = None
+
+    # EPFO
+    epfo_user_id: Optional[str] = None
+    epfo_password: Optional[str] = None
+    epfo_email: Optional[str] = None
+
+    # Other portal
+    other_portal_user_id: Optional[str] = None
+    other_portal_password: Optional[str] = None
+    other_portal_email: Optional[str] = None
+
+    # Digital Signature
+    dsc_serial_no: Optional[str] = None
+    dsc_issued_date: Optional[str] = None
+    dsc_expired_date: Optional[str] = None
+
+    # ISO
+    iso_user_id: Optional[str] = None
+    iso_password: Optional[str] = None
+
+    # GEM
+    gem_user_id: Optional[str] = None
+    gem_password: Optional[str] = None
+    gem_email: Optional[str] = None
+
+    # PMGSY
+    pmgsy_user_id: Optional[str] = None
+    pmgsy_password: Optional[str] = None
+    pmgsy_email: Optional[str] = None
+
     notes: Optional[str] = None
     created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
@@ -134,12 +188,41 @@ class Customer(BaseModel):
 
 class CustomerInput(BaseModel):
     name: str
-    company: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    gst: Optional[str] = None
-    pan: Optional[str] = None
     address: Optional[str] = None
+    mobile: str
+    whatsapp: str
+    email: Optional[str] = None
+    pan: str
+    aadhar: str
+    eproc2_user_id: Optional[str] = None
+    eproc2_password: Optional[str] = None
+    eproc2_email: Optional[str] = None
+    railway_user_id: Optional[str] = None
+    railway_password: Optional[str] = None
+    railway_email: Optional[str] = None
+    cpp_user_id: Optional[str] = None
+    cpp_password: Optional[str] = None
+    cpp_email: Optional[str] = None
+    gst_no: Optional[str] = None
+    gst_password: Optional[str] = None
+    gst_email: Optional[str] = None
+    epfo_user_id: Optional[str] = None
+    epfo_password: Optional[str] = None
+    epfo_email: Optional[str] = None
+    other_portal_user_id: Optional[str] = None
+    other_portal_password: Optional[str] = None
+    other_portal_email: Optional[str] = None
+    dsc_serial_no: Optional[str] = None
+    dsc_issued_date: Optional[str] = None
+    dsc_expired_date: Optional[str] = None
+    iso_user_id: Optional[str] = None
+    iso_password: Optional[str] = None
+    gem_user_id: Optional[str] = None
+    gem_password: Optional[str] = None
+    gem_email: Optional[str] = None
+    pmgsy_user_id: Optional[str] = None
+    pmgsy_password: Optional[str] = None
+    pmgsy_email: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -428,7 +511,25 @@ async def logout(authorization: Optional[str] = Header(None)):
 # ============ Customers ============
 @api_router.post("/customers", response_model=Customer)
 async def create_customer(payload: CustomerInput, current: User = Depends(get_current_user)):
-    c = Customer(**payload.dict(), created_by=current.user_id)
+    # Validate mandatory fields (Pydantic already enforces presence; also block empty strings)
+    missing = []
+    for k in ("name", "mobile", "whatsapp", "pan", "aadhar"):
+        if not (getattr(payload, k) or "").strip():
+            missing.append(k)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing mandatory: {', '.join(missing)}")
+
+    # Atomically increment counter to build unique customer_code like TRV-CUST-0001
+    counter = await db.counters.find_one_and_update(
+        {"_id": "customer_code"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = (counter or {}).get("seq") or 1
+    code = f"TRV-CUST-{seq:04d}"
+
+    c = Customer(**payload.dict(), customer_code=code, created_by=current.user_id)
     await db.customers.insert_one(c.dict())
     return c
 

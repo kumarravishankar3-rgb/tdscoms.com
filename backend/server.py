@@ -229,26 +229,86 @@ class CustomerInput(BaseModel):
 
 class Employee(BaseModel):
     id: str = Field(default_factory=lambda: new_id("emp"))
+    employee_code: Optional[str] = None  # TDSC{seq}{DDMMYYYY}
+
+    # Basic
     name: str
+    address: Optional[str] = None
+    mobile: Optional[str] = None
+    emergency_mobile: Optional[str] = None
     email: str
-    phone: Optional[str] = None
-    department: Optional[str] = None
+    photo_path: Optional[str] = None
+    pan: Optional[str] = None
+    aadhar: Optional[str] = None
+    date_of_joining: Optional[str] = None  # DD-MM-YYYY or YYYY-MM-DD
+    date_of_birth: Optional[str] = None
+
+    # Bank
+    bank_account_no: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_holder_name: Optional[str] = None
+
+    # Employment
     designation: Optional[str] = None
+    posting_branch: Optional[str] = None
     role: str = "employee"
-    joining_date: Optional[str] = None
-    salary: Optional[float] = None
+    epfo_no: Optional[str] = None
+    esic_no: Optional[str] = None
+
+    # Salary components
+    pay: Optional[float] = 0
+    da: Optional[float] = 0
+    hra: Optional[float] = 0
+    ma: Optional[float] = 0
+    ta: Optional[float] = 0
+    other1: Optional[float] = 0
+    other2: Optional[float] = 0
+    gross_amount: Optional[float] = 0
+
+    # Deductions
+    ded_epfo: Optional[float] = 0
+    ded_esic: Optional[float] = 0
+    ded_advance: Optional[float] = 0
+    ded_advance_installments: Optional[str] = None
+    ded_other: Optional[float] = 0
+    net_total: Optional[float] = 0
+
+    salary: Optional[float] = None  # backward-compat kept
     created_at: datetime = Field(default_factory=now_utc)
 
 
 class EmployeeInput(BaseModel):
     name: str
+    address: Optional[str] = None
+    mobile: Optional[str] = None
+    emergency_mobile: Optional[str] = None
     email: EmailStr
-    phone: Optional[str] = None
-    department: Optional[str] = None
+    pan: Optional[str] = None
+    aadhar: Optional[str] = None
+    date_of_joining: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    bank_account_no: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_holder_name: Optional[str] = None
     designation: Optional[str] = None
+    posting_branch: Optional[str] = None
     role: str = "employee"
-    joining_date: Optional[str] = None
-    salary: Optional[float] = None
+    epfo_no: Optional[str] = None
+    esic_no: Optional[str] = None
+    pay: Optional[float] = 0
+    da: Optional[float] = 0
+    hra: Optional[float] = 0
+    ma: Optional[float] = 0
+    ta: Optional[float] = 0
+    other1: Optional[float] = 0
+    other2: Optional[float] = 0
+    ded_epfo: Optional[float] = 0
+    ded_esic: Optional[float] = 0
+    ded_advance: Optional[float] = 0
+    ded_advance_installments: Optional[str] = None
+    ded_other: Optional[float] = 0
 
 
 class Task(BaseModel):
@@ -604,9 +664,46 @@ async def delete_customer_attachment(cid: str, path: str, current: User = Depend
 
 
 # ============ Employees ============
+def _ddmmyyyy(date_str: Optional[str]) -> str:
+    if not date_str:
+        return datetime.now().strftime("%d%m%Y")
+    s = date_str.strip()
+    # accept YYYY-MM-DD or DD-MM-YYYY or DD/MM/YYYY
+    for sep in ("-", "/"):
+        parts = s.split(sep)
+        if len(parts) == 3:
+            if len(parts[0]) == 4:  # YYYY-MM-DD
+                return f"{parts[2].zfill(2)}{parts[1].zfill(2)}{parts[0]}"
+            else:  # DD-MM-YYYY
+                return f"{parts[0].zfill(2)}{parts[1].zfill(2)}{parts[2].zfill(4)}"
+    return datetime.now().strftime("%d%m%Y")
+
+
+def _compute_salary(d: dict) -> dict:
+    def f(k):
+        try: return float(d.get(k) or 0)
+        except: return 0.0
+    gross = f("pay") + f("da") + f("hra") + f("ma") + f("ta") + f("other1") + f("other2")
+    ded = f("ded_epfo") + f("ded_esic") + f("ded_advance") + f("ded_other")
+    d["gross_amount"] = round(gross, 2)
+    d["net_total"] = round(gross - ded, 2)
+    return d
+
+
 @api_router.post("/employees", response_model=Employee)
 async def create_employee(payload: EmployeeInput, current: User = Depends(require_admin_or_manager)):
-    e = Employee(**payload.dict())
+    data = payload.dict()
+    counter = await db.counters.find_one_and_update(
+        {"_id": "employee_code"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = (counter or {}).get("seq") or 1
+    ddmmyyyy = _ddmmyyyy(data.get("date_of_joining"))
+    code = f"TDSC{seq:02d}{ddmmyyyy}"
+    data = _compute_salary(data)
+    e = Employee(**data, employee_code=code)
     await db.employees.insert_one(e.dict())
     return e
 
@@ -617,10 +714,36 @@ async def list_employees(current: User = Depends(get_current_user)):
     return [Employee(**d) for d in docs]
 
 
+@api_router.get("/employees/{eid}", response_model=Employee)
+async def get_employee(eid: str, current: User = Depends(get_current_user)):
+    d = await db.employees.find_one({"id": eid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Employee(**d)
+
+
 @api_router.delete("/employees/{eid}")
 async def delete_employee(eid: str, current: User = Depends(require_admin)):
     res = await db.employees.delete_one({"id": eid})
     return {"deleted": res.deleted_count}
+
+
+@api_router.post("/employees/{eid}/photo", response_model=Employee)
+async def upload_employee_photo(eid: str, file: UploadFile = File(...), current: User = Depends(require_admin_or_manager)):
+    emp = await db.employees.find_one({"id": eid}, {"_id": 0})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Photo exceeds 10 MB limit")
+    ext = (file.filename or "img").rsplit(".", 1)[-1].lower()
+    ext = ext if len(ext) <= 8 else "jpg"
+    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
+    content_type = file.content_type or "image/jpeg"
+    await run_in_threadpool(put_object, path, data, content_type)
+    await db.employees.update_one({"id": eid}, {"$set": {"photo_path": path}})
+    updated = await db.employees.find_one({"id": eid}, {"_id": 0})
+    return Employee(**updated)
 
 
 # ============ Tasks ============

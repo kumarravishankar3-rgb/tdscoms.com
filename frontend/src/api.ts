@@ -96,6 +96,25 @@ export const api = {
     if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
     return data;
   },
+  uploadEmployeePhoto: async (eid: string, file: { uri: string; name: string; type: string }) => {
+    const token = await tokenStore.get();
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(file.uri)).blob();
+      form.append('file', blob, file.name);
+    } else {
+      form.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
+    }
+    const res = await fetch(`${BASE}/api/employees/${eid}/photo`, {
+      method: 'POST',
+      body: form as any,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
+    return data;
+  },
 };
 
 export type UserRole = 'admin' | 'manager' | 'employee';

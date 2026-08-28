@@ -10,7 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.hrtenderhub.mla9i8"
+      "bundleIdentifier": "com.emergent.hrtenderhub.mla9i8",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Add employee and document photos",
+        "NSCameraUsageDescription": "Capture employee photos and documents"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +22,8 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.hrtenderhub.mla9i8"
+      "package": "com.emergent.hrtenderhub.mla9i8",
+      "permissions": ["READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"]
     },
     "web": {
       "bundler": "metro",

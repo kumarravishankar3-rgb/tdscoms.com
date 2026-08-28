@@ -1,9 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Image } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font, roleColor } from '@/src/theme';
-import { api } from '@/src/api';
+import { api, tokenStore } from '@/src/api';
 import { Avatar, Card, EmptyState, ScreenLoader } from '@/src/ui';
 import { ScreenHeader } from '@/src/ScreenHeader';
 import { useAuth } from '@/src/AuthContext';
@@ -12,9 +12,13 @@ export default function EmployeesScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [list, setList] = useState<any[] | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try { setList(await api.get<any[]>('/employees')); } catch { setList([]); }
+    try {
+      const [items, t] = await Promise.all([api.get<any[]>('/employees'), tokenStore.get()]);
+      setList(items); setToken(t);
+    } catch { setList([]); }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -38,11 +42,16 @@ export default function EmployeesScreen() {
           renderItem={({ item }) => (
             <Card>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                <Avatar name={item.name} />
+                {item.photo_path && token ? (
+                  <Image source={{ uri: `${api.base}/api/files/${item.photo_path}?token=${encodeURIComponent(token)}` }} style={styles.photo} />
+                ) : (
+                  <Avatar name={item.name} size={48} />
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{item.name}</Text>
-                  <Text style={styles.muted}>{item.designation || '-'} • {item.department || '-'}</Text>
-                  <Text style={styles.muted}>{item.email}</Text>
+                  {item.employee_code ? <Text style={styles.code}>{item.employee_code}</Text> : null}
+                  <Text style={styles.muted}>{item.designation || '-'} • {item.posting_branch || item.email}</Text>
+                  {item.net_total ? <Text style={styles.muted}>Net: ₹ {Number(item.net_total).toLocaleString('en-IN')}</Text> : null}
                 </View>
                 <View style={[styles.roleBadge, { backgroundColor: roleColor(item.role) + '20' }]}>
                   <Text style={{ color: roleColor(item.role), fontWeight: '800', fontSize: 10 }}>{(item.role || 'employee').toUpperCase()}</Text>
@@ -55,9 +64,12 @@ export default function EmployeesScreen() {
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   add: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brandPrimary, alignItems: 'center', justifyContent: 'center' },
+  photo: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceSecondary },
   name: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface },
+  code: { color: colors.brandPrimary, fontWeight: '700', fontSize: font.sm, marginTop: 2 },
   muted: { color: colors.muted, fontSize: font.sm, marginTop: 2 },
   roleBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
 });

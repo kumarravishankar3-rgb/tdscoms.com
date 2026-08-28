@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL as string;
 const TOKEN_KEY = 'triveni_session_token';
@@ -115,6 +117,50 @@ export const api = {
     if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
     return data;
   },
+  createPunch: async (payload: { type: 'in' | 'out'; lat?: number; lng?: number; accuracy?: number; selfie: { uri: string; name: string; type: string } }) => {
+    const token = await tokenStore.get();
+    const form = new FormData();
+    form.append('type', payload.type);
+    if (payload.lat != null) form.append('lat', String(payload.lat));
+    if (payload.lng != null) form.append('lng', String(payload.lng));
+    if (payload.accuracy != null) form.append('accuracy', String(payload.accuracy));
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(payload.selfie.uri)).blob();
+      form.append('selfie', blob, payload.selfie.name);
+    } else {
+      form.append('selfie', { uri: payload.selfie.uri, name: payload.selfie.name, type: payload.selfie.type } as any);
+    }
+    const res = await fetch(`${BASE}/api/punches`, {
+      method: 'POST',
+      body: form as any,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error((data && data.detail) || `Punch failed (${res.status})`);
+    return data;
+  },
+};
+
+export const captureSelfie = async (): Promise<{ uri: string; name: string; type: string } | null> => {
+  const perm = await ImagePicker.requestCameraPermissionsAsync();
+  if (!perm.granted) throw new Error('Camera permission is required for face verification');
+  const res = await ImagePicker.launchCameraAsync({
+    cameraType: ImagePicker.CameraType.front,
+    quality: 0.6,
+    allowsEditing: false,
+    mediaTypes: ['images'],
+  });
+  if (res.canceled || !res.assets?.[0]) return null;
+  const a = res.assets[0];
+  return { uri: a.uri, name: a.fileName || 'selfie.jpg', type: a.mimeType || 'image/jpeg' };
+};
+
+export const getCurrentLocation = async (): Promise<{ lat: number; lng: number; accuracy?: number }> => {
+  const perm = await Location.requestForegroundPermissionsAsync();
+  if (!perm.granted) throw new Error('Location permission is required for punch-in');
+  const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+  return { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy || undefined };
 };
 
 export type UserRole = 'admin' | 'manager' | 'employee';

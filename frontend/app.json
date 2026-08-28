@@ -13,7 +13,8 @@
       "bundleIdentifier": "com.emergent.hrtenderhub.mla9i8",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Add employee and document photos",
-        "NSCameraUsageDescription": "Capture employee photos and documents"
+        "NSCameraUsageDescription": "Capture selfie for attendance and photos",
+        "NSLocationWhenInUseUsageDescription": "Verify office location for attendance"
       }
     },
     "android": {
@@ -23,7 +24,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.emergent.hrtenderhub.mla9i8",
-      "permissions": ["READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"]
+      "permissions": ["READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES", "CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
     },
     "web": {
       "bundler": "metro",

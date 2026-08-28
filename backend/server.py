@@ -181,6 +181,11 @@ class Customer(BaseModel):
     pmgsy_password: Optional[str] = None
     pmgsy_email: Optional[str] = None
 
+    # Contractor Registration
+    contractor_reg_no: Optional[str] = None
+    registration_class: Optional[str] = None
+    registration_validity: Optional[str] = None
+
     notes: Optional[str] = None
     attachments: List[dict] = Field(default_factory=list)  # [{path,name,size,content_type,uploaded_at}]
     created_by: Optional[str] = None
@@ -224,6 +229,9 @@ class CustomerInput(BaseModel):
     pmgsy_user_id: Optional[str] = None
     pmgsy_password: Optional[str] = None
     pmgsy_email: Optional[str] = None
+    contractor_reg_no: Optional[str] = None
+    registration_class: Optional[str] = None
+    registration_validity: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -252,6 +260,7 @@ class Employee(BaseModel):
     # Employment
     designation: Optional[str] = None
     posting_branch: Optional[str] = None
+    office_id: Optional[str] = None
     role: str = "employee"
     epfo_no: Optional[str] = None
     esic_no: Optional[str] = None
@@ -294,6 +303,7 @@ class EmployeeInput(BaseModel):
     account_holder_name: Optional[str] = None
     designation: Optional[str] = None
     posting_branch: Optional[str] = None
+    office_id: Optional[str] = None
     role: str = "employee"
     epfo_no: Optional[str] = None
     esic_no: Optional[str] = None
@@ -431,6 +441,67 @@ class TenderInput(BaseModel):
     submission_deadline: Optional[str] = None
     status: str = "open"
     description: Optional[str] = None
+
+
+class OfficeSettings(BaseModel):
+    # Global settings (per-office location moved to Office model)
+    start_time: str = "09:00"      # HH:MM 24h
+    grace_minutes: int = 10
+    late_fine_per_day: float = 100.0
+    working_days_per_month: int = 26
+
+
+class OfficeSettingsInput(BaseModel):
+    start_time: Optional[str] = None
+    grace_minutes: Optional[int] = None
+    late_fine_per_day: Optional[float] = None
+    working_days_per_month: Optional[int] = None
+
+
+class Office(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("off"))
+    name: str
+    address: Optional[str] = None
+    lat: float
+    lng: float
+    radius_m: int = 20
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class OfficeInput(BaseModel):
+    name: str
+    address: Optional[str] = None
+    lat: float
+    lng: float
+    radius_m: int = 20
+
+
+class OfficeUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    radius_m: Optional[int] = None
+
+
+class PunchRecord(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("pn"))
+    user_id: str
+    user_name: str
+    employee_code: Optional[str] = None
+    office_id: Optional[str] = None
+    office_name: Optional[str] = None
+    type: str  # "in" | "out"
+    date: str  # YYYY-MM-DD
+    time: str  # HH:MM:SS
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    accuracy: Optional[float] = None
+    distance_m: Optional[float] = None
+    within_geofence: bool = True
+    is_late: bool = False
+    selfie_path: Optional[str] = None
+    created_at: datetime = Field(default_factory=now_utc)
 
 
 # ============ Auth ============
@@ -922,6 +993,255 @@ async def download_file(full_path: str, token: Optional[str] = None, authorizati
     # ownership: verify path belongs to a tender the user can access (any authenticated user for now)
     data, ct = await run_in_threadpool(get_object, full_path)
     return Response(content=data, media_type=ct)
+
+
+# ============ Office Settings ============
+async def get_office_settings_doc() -> dict:
+    doc = await db.office_settings.find_one({"_id": "singleton"}, {"_id": 0})
+    if not doc:
+        default = OfficeSettings().dict()
+        await db.office_settings.insert_one({"_id": "singleton", **default})
+        return default
+    return doc
+
+
+@api_router.get("/office-settings", response_model=OfficeSettings)
+async def get_office_settings(current: User = Depends(get_current_user)):
+    doc = await get_office_settings_doc()
+    return OfficeSettings(**doc)
+
+
+@api_router.put("/office-settings", response_model=OfficeSettings)
+async def update_office_settings(payload: OfficeSettingsInput, current: User = Depends(require_admin)):
+    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    if updates:
+        await db.office_settings.update_one({"_id": "singleton"}, {"$set": updates}, upsert=True)
+    doc = await get_office_settings_doc()
+    return OfficeSettings(**doc)
+
+
+# ============ Offices (multi-office) ============
+@api_router.get("/offices", response_model=List[Office])
+async def list_offices(current: User = Depends(get_current_user)):
+    docs = await db.offices.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return [Office(**d) for d in docs]
+
+
+@api_router.post("/offices", response_model=Office)
+async def create_office(payload: OfficeInput, current: User = Depends(require_admin)):
+    o = Office(**payload.dict())
+    await db.offices.insert_one(o.dict())
+    return o
+
+
+@api_router.patch("/offices/{oid}", response_model=Office)
+async def update_office(oid: str, payload: OfficeUpdate, current: User = Depends(require_admin)):
+    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    if updates:
+        await db.offices.update_one({"id": oid}, {"$set": updates})
+    d = await db.offices.find_one({"id": oid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Office(**d)
+
+
+@api_router.delete("/offices/{oid}")
+async def delete_office(oid: str, current: User = Depends(require_admin)):
+    res = await db.offices.delete_one({"id": oid})
+    return {"deleted": res.deleted_count}
+
+
+# ============ Punches ============
+def _haversine_m(lat1, lng1, lat2, lng2) -> float:
+    import math
+    R = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _parse_hhmm(s: str) -> tuple:
+    try:
+        h, m = s.split(":")
+        return int(h), int(m)
+    except Exception:
+        return 9, 0
+
+
+@api_router.post("/punches", response_model=PunchRecord)
+async def create_punch(
+    type: str = Form(...),  # "in" or "out"
+    lat: Optional[float] = Form(None),
+    lng: Optional[float] = Form(None),
+    accuracy: Optional[float] = Form(None),
+    selfie: UploadFile = File(...),
+    current: User = Depends(get_current_user),
+):
+    if type not in ("in", "out"):
+        raise HTTPException(status_code=400, detail="type must be 'in' or 'out'")
+
+    now = datetime.now(timezone.utc)
+    # local IST for date/time display (server can be UTC)
+    ist = now.astimezone(tz=None) if True else now
+    date_str = ist.strftime("%Y-%m-%d")
+    time_str = ist.strftime("%H:%M:%S")
+
+    # Enforce 10 punches per day (counting both in+out)
+    todays = await db.punches.count_documents({"user_id": current.user_id, "date": date_str})
+    if todays >= 10:
+        raise HTTPException(status_code=400, detail="Daily punch limit reached (10)")
+
+    # Selfie mandatory
+    if not selfie:
+        raise HTTPException(status_code=400, detail="Selfie is mandatory")
+    data = await selfie.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Selfie is empty")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Selfie exceeds 10 MB limit")
+
+    settings = await get_office_settings_doc()
+
+    # Resolve employee's assigned office
+    emp = await db.employees.find_one({"email": current.email}, {"_id": 0})
+    office = None
+    if emp and emp.get("office_id"):
+        office = await db.offices.find_one({"id": emp["office_id"]}, {"_id": 0})
+    within = True
+    distance = None
+    if type == "in":
+        if not office:
+            raise HTTPException(status_code=400, detail="You are not assigned to any office. Ask admin to assign a posting office.")
+        if lat is None or lng is None:
+            raise HTTPException(status_code=400, detail="Location required for punch-in")
+        distance = _haversine_m(lat, lng, office["lat"], office["lng"])
+        radius = int(office.get("radius_m") or 20)
+        within = distance <= radius
+        if not within:
+            raise HTTPException(status_code=400, detail=f"You are {int(distance)} m from '{office['name']}'. Must be within {radius} m to punch in.")
+    else:
+        # punch-out anywhere
+        if lat is not None and lng is not None and office:
+            distance = _haversine_m(lat, lng, office["lat"], office["lng"])
+            within = distance <= int(office.get("radius_m") or 20)
+
+    # Late detection on punch-in
+    is_late = False
+    if type == "in":
+        sh, sm = _parse_hhmm(settings.get("start_time") or "09:00")
+        grace = int(settings.get("grace_minutes") or 0)
+        limit = ist.replace(hour=sh, minute=sm, second=0, microsecond=0) + timedelta(minutes=grace)
+        is_late = ist > limit
+
+    # Upload selfie
+    ext = (selfie.filename or "img").rsplit(".", 1)[-1].lower()
+    ext = ext if len(ext) <= 8 else "jpg"
+    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
+    await run_in_threadpool(put_object, path, data, selfie.content_type or "image/jpeg")
+
+    emp_code = emp.get("employee_code") if emp else None
+
+    rec = PunchRecord(
+        user_id=current.user_id, user_name=current.name, employee_code=emp_code,
+        office_id=(office or {}).get("id"), office_name=(office or {}).get("name"),
+        type=type, date=date_str, time=time_str,
+        lat=lat, lng=lng, accuracy=accuracy, distance_m=distance,
+        within_geofence=within, is_late=is_late, selfie_path=path,
+    )
+    await db.punches.insert_one(rec.dict())
+    return rec
+
+
+@api_router.get("/punches", response_model=List[PunchRecord])
+async def list_punches(date: Optional[str] = None, month: Optional[str] = None, user_id: Optional[str] = None, current: User = Depends(get_current_user)):
+    q: dict = {}
+    if current.role in ("admin", "manager"):
+        if user_id:
+            q["user_id"] = user_id
+    else:
+        q["user_id"] = current.user_id
+    if date:
+        q["date"] = date
+    if month:  # YYYY-MM
+        q["date"] = {"$regex": f"^{month}"}
+    docs = await db.punches.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return [PunchRecord(**d) for d in docs]
+
+
+@api_router.get("/punches/today/summary")
+async def today_summary(current: User = Depends(get_current_user)):
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    docs = await db.punches.find({"user_id": current.user_id, "date": date_str}, {"_id": 0}).sort("created_at", 1).to_list(50)
+    ins = [d for d in docs if d["type"] == "in"]
+    outs = [d for d in docs if d["type"] == "out"]
+    late_count = sum(1 for d in ins if d.get("is_late"))
+    return {
+        "date": date_str,
+        "count": len(docs),
+        "remaining": max(0, 10 - len(docs)),
+        "last_type": docs[-1]["type"] if docs else None,
+        "last_time": docs[-1]["time"] if docs else None,
+        "punches_in": len(ins),
+        "punches_out": len(outs),
+        "late_count": late_count,
+        "records": docs,
+    }
+
+
+# ============ Payroll ============
+@api_router.get("/payroll")
+async def payroll_summary(month: str, current: User = Depends(require_admin_or_manager)):
+    # month = YYYY-MM
+    settings = await get_office_settings_doc()
+    working_days = int(settings.get("working_days_per_month") or 26)
+    fine_per_day = float(settings.get("late_fine_per_day") or 0)
+    employees = await db.employees.find({}, {"_id": 0}).to_list(500)
+    result = []
+    for e in employees:
+        gross = float(e.get("gross_amount") or 0)
+        per_day = gross / working_days if working_days else 0
+
+        # Attendance: distinct dates with at least one punch-in this month
+        dates = await db.punches.distinct("date", {
+            "user_id": {"$exists": True},
+            "type": "in",
+            "date": {"$regex": f"^{month}"},
+        })
+        # Filter dates to this employee via email->user
+        user_doc = await db.users.find_one({"email": e.get("email")}, {"_id": 0, "user_id": 1})
+        emp_user_id = user_doc.get("user_id") if user_doc else None
+        emp_dates = []
+        if emp_user_id:
+            emp_dates = await db.punches.distinct("date", {"user_id": emp_user_id, "type": "in", "date": {"$regex": f"^{month}"}})
+        days_present = len(emp_dates)
+
+        # Late days this month
+        late_days = 0
+        if emp_user_id:
+            late_days = await db.punches.count_documents({"user_id": emp_user_id, "type": "in", "is_late": True, "date": {"$regex": f"^{month}"}})
+
+        earned = round(per_day * days_present, 2)
+        late_fine = round(fine_per_day * late_days, 2)
+        deductions = float(e.get("ded_epfo") or 0) + float(e.get("ded_esic") or 0) + float(e.get("ded_advance") or 0) + float(e.get("ded_other") or 0)
+        net = round(earned - late_fine - deductions, 2)
+        result.append({
+            "employee_id": e.get("id"),
+            "employee_code": e.get("employee_code"),
+            "name": e.get("name"),
+            "designation": e.get("designation"),
+            "gross_configured": gross,
+            "per_day": round(per_day, 2),
+            "days_present": days_present,
+            "working_days": working_days,
+            "earned": earned,
+            "late_days": late_days,
+            "late_fine": late_fine,
+            "deductions": round(deductions, 2),
+            "net_payable": net,
+        })
+    return {"month": month, "settings": {"working_days_per_month": working_days, "late_fine_per_day": fine_per_day}, "employees": result}
 
 
 # ============ Dashboard ============

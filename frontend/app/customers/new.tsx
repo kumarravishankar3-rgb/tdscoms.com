@@ -21,6 +21,7 @@ const initial: F = {
   iso_user_id: '', iso_password: '',
   gem_user_id: '', gem_password: '', gem_email: '',
   pmgsy_user_id: '', pmgsy_password: '', pmgsy_email: '',
+  contractor_reg_no: '', registration_class: '', registration_validity: '',
   notes: '',
 };
 
@@ -144,6 +145,12 @@ export default function NewCustomer() {
             <FormInput label="PMGSY Site User ID" value={f.pmgsy_user_id} onChangeText={set('pmgsy_user_id')} testID="in-pmgsy-uid" />
             <FormInput label="PMGSY Site Password" value={f.pmgsy_password} onChangeText={set('pmgsy_password')} secure testID="in-pmgsy-pwd" />
             <FormInput label="Concern Email" value={f.pmgsy_email} onChangeText={set('pmgsy_email')} keyboardType="email-address" testID="in-pmgsy-email" />
+          </Section>
+
+          <Section title="Contractor Registration" icon="ribbon" testID="sec-reg">
+            <FormInput label="Contractor Registration No." value={f.contractor_reg_no} onChangeText={set('contractor_reg_no')} testID="in-reg-no" />
+            <FormInput label="Registration Class" value={f.registration_class} onChangeText={set('registration_class')} placeholder="e.g. Class A / Class-I" testID="in-reg-class" />
+            <FormInput label="Validity of Registration" value={f.registration_validity} onChangeText={set('registration_validity')} placeholder="YYYY-MM-DD" testID="in-reg-validity" />
           </Section>
 
           <Section title="Notes" icon="document-text" testID="sec-notes">

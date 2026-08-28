@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Text, Pressable, Image, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,7 @@ const initial: F = {
   name: '', address: '', mobile: '', emergency_mobile: '', email: '',
   pan: '', aadhar: '', date_of_joining: '', date_of_birth: '',
   bank_account_no: '', bank_ifsc: '', bank_name: '', account_holder_name: '',
-  designation: '', posting_branch: '', role: 'employee',
+  designation: '', posting_branch: '', office_id: '', role: 'employee',
   epfo_no: '', esic_no: '',
   pay: '', da: '', hra: '', ma: '', ta: '', other1: '', other2: '',
   ded_epfo: '', ded_esic: '', ded_advance: '', ded_advance_installments: '', ded_other: '',
@@ -44,7 +44,10 @@ export default function NewEmployee() {
   const [ok, setOk] = useState<string | null>(null);
   const [f, setF] = useState<F>(initial);
   const [photo, setPhoto] = useState<{ uri: string; name: string; type: string } | null>(null);
+  const [offices, setOffices] = useState<any[]>([]);
   const set = (k: string) => (v: string) => setF(p => ({ ...p, [k]: v }));
+
+  useEffect(() => { (async () => { try { setOffices(await api.get<any[]>('/offices')); } catch {} })(); }, []);
 
   const gross = useMemo(() =>
     num(f.pay) + num(f.da) + num(f.hra) + num(f.ma) + num(f.ta) + num(f.other1) + num(f.other2)
@@ -126,7 +129,22 @@ export default function NewEmployee() {
 
           <Section title="Employment" icon="briefcase" testID="sec-emp">
             <FormInput label="Designation" value={f.designation} onChangeText={set('designation')} testID="in-desig" />
-            <FormInput label="Posting Branch" value={f.posting_branch} onChangeText={set('posting_branch')} testID="in-branch" />
+            <FormInput label="Posting Branch (label)" value={f.posting_branch} onChangeText={set('posting_branch')} testID="in-branch" />
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: colors.muted, fontSize: font.sm, fontWeight: '600' }}>Assigned Office (for punch-in geofence)</Text>
+              {offices.length === 0 ? (
+                <Text style={{ color: colors.error, fontSize: font.sm }}>No offices set up yet. Admin must add offices from Settings → Offices.</Text>
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {offices.map(o => (
+                    <Pressable key={o.id} testID={`office-${o.id}`} onPress={() => setF(p => ({ ...p, office_id: o.id }))} style={[styles.officeChip, f.office_id === o.id && styles.officeChipActive]}>
+                      <Ionicons name="location" size={14} color={f.office_id === o.id ? colors.onBrandPrimary : colors.brandPrimary} />
+                      <Text style={[styles.officeChipText, f.office_id === o.id && { color: colors.onBrandPrimary }]}>{o.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
             <OptionRow label="Role" options={['employee', 'manager', 'admin']} value={f.role} onChange={(v) => setF(p => ({ ...p, role: v }))} testID="role" />
             <FormInput label="EPFO No." value={f.epfo_no} onChangeText={set('epfo_no')} testID="in-epfo" />
             <FormInput label="ESIC No." value={f.esic_no} onChangeText={set('esic_no')} testID="in-esic" />
@@ -187,4 +205,7 @@ const styles = StyleSheet.create({
   grossValue: { color: colors.onBrandTertiary, fontWeight: '800', fontSize: font.lg },
   err: { color: colors.error, textAlign: 'center', fontSize: font.base },
   ok: { color: colors.success, textAlign: 'center', fontWeight: '700' },
+  officeChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  officeChipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  officeChipText: { color: colors.onSurface, fontWeight: '600' },
 });

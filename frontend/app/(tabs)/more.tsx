@@ -18,6 +18,12 @@ export default function MoreScreen() {
     { icon: 'cash', label: 'Accounts', route: '/(tabs)/business', color: colors.warning, testID: 'row-accounts' },
   ];
 
+  const adminRows = user?.role === 'admin' ? [
+    { icon: 'business', label: 'Offices (Geofence)', route: '/offices', color: colors.brandSecondary, testID: 'row-offices' },
+    { icon: 'wallet', label: 'Payroll', route: '/payroll', color: colors.success, testID: 'row-payroll' },
+    { icon: 'settings', label: 'Attendance Settings', route: '/attendance-settings', color: colors.info, testID: 'row-att-settings' },
+  ] : [];
+
   return (
     <SafeAreaView edges={['top']} style={styles.root} testID="more-screen">
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }}>
@@ -44,6 +50,21 @@ export default function MoreScreen() {
             </Pressable>
           ))}
         </View>
+
+        {adminRows.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Admin</Text>
+            {adminRows.map(r => (
+              <Pressable key={r.label} testID={r.testID} style={styles.row} onPress={() => router.push(r.route as any)}>
+                <View style={[styles.rowIcon, { backgroundColor: r.color + '20' }]}>
+                  <Ionicons name={r.icon as any} size={20} color={r.color} />
+                </View>
+                <Text style={styles.rowLabel}>{r.label}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>

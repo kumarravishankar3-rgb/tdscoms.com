@@ -93,6 +93,9 @@ export default function CustomerDetail() {
           {c.gst_no ? <Row label="GST No." value={c.gst_no} /> : null}
           {c.dsc_serial_no ? <Row label="DSC Serial" value={c.dsc_serial_no} /> : null}
           {c.dsc_expired_date ? <Row label="DSC Expiry" value={c.dsc_expired_date} /> : null}
+          {c.contractor_reg_no ? <Row label="Reg. No." value={c.contractor_reg_no} /> : null}
+          {c.registration_class ? <Row label="Reg. Class" value={c.registration_class} /> : null}
+          {c.registration_validity ? <Row label="Reg. Valid" value={c.registration_validity} /> : null}
         </Card>
 
         <Card>

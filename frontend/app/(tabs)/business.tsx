@@ -59,18 +59,23 @@ export default function BusinessScreen() {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl }}
             renderItem={({ item }) => (
-              <Card>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                  <Avatar name={item.name} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemTitle}>{item.name}</Text>
-                    {item.customer_code ? <Text style={[styles.muted, { color: colors.brandPrimary, fontWeight: '700' }]}>{item.customer_code}</Text> : null}
-                    {item.mobile ? <Text style={styles.muted}>📱 {item.mobile}</Text> : null}
-                    {item.pan ? <Text style={styles.muted}>PAN: {item.pan}</Text> : null}
+              <Pressable onPress={() => router.push(`/customers/${item.id}` as any)} testID={`customer-${item.id}`}>
+                <Card>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                    <Avatar name={item.name} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemTitle}>{item.name}</Text>
+                      {item.customer_code ? <Text style={[styles.muted, { color: colors.brandPrimary, fontWeight: '700' }]}>{item.customer_code}</Text> : null}
+                      {item.mobile ? <Text style={styles.muted}>📱 {item.mobile}</Text> : null}
+                      {item.pan ? <Text style={styles.muted}>PAN: {item.pan}</Text> : null}
+                    </View>
+                    {(item.attachments || []).length > 0 ? (
+                      <View style={styles.attachTag}><Ionicons name="attach" size={12} color={colors.onBrandTertiary} /><Text style={styles.attachText}>{item.attachments.length}</Text></View>
+                    ) : null}
+                    {item.gst_no ? <View style={styles.gstTag}><Text style={styles.gstText}>GST</Text></View> : null}
                   </View>
-                  {item.gst_no ? <View style={styles.gstTag}><Text style={styles.gstText}>GST</Text></View> : null}
-                </View>
-              </Card>
+                </Card>
+              </Pressable>
             )}
           />
         )
@@ -120,4 +125,6 @@ const styles = StyleSheet.create({
   amount: { fontWeight: '800', fontSize: font.lg },
   gstTag: { backgroundColor: colors.brandTertiary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   gstText: { color: colors.onBrandTertiary, fontSize: 10, fontWeight: '800' },
+  attachTag: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: colors.brandTertiary, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  attachText: { color: colors.onBrandTertiary, fontSize: 10, fontWeight: '800' },
 });

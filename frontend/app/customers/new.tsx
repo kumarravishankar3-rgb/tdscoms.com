@@ -63,7 +63,7 @@ export default function NewCustomer() {
         pan: f.pan.trim().toUpperCase(), aadhar: f.aadhar.trim(),
       });
       setOk(`Saved ✓ Customer ID: ${created.customer_code || created.id}`);
-      setTimeout(() => router.back(), 800);
+      setTimeout(() => router.replace(`/customers/${created.id}` as any), 600);
     } catch (e: any) { setErr(e?.message || 'Failed'); } finally { setBusy(false); }
   };
 

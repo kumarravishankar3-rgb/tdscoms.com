@@ -182,6 +182,7 @@ class Customer(BaseModel):
     pmgsy_email: Optional[str] = None
 
     notes: Optional[str] = None
+    attachments: List[dict] = Field(default_factory=list)  # [{path,name,size,content_type,uploaded_at}]
     created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
 
@@ -561,6 +562,45 @@ async def update_customer(cid: str, payload: CustomerInput, current: User = Depe
 async def delete_customer(cid: str, current: User = Depends(require_admin_or_manager)):
     res = await db.customers.delete_one({"id": cid})
     return {"deleted": res.deleted_count}
+
+
+MAX_CUSTOMER_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@api_router.post("/customers/{cid}/attachments", response_model=Customer)
+async def upload_customer_file(cid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    cust = await db.customers.find_one({"id": cid}, {"_id": 0})
+    if not cust:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    data = await file.read()
+    if len(data) > MAX_CUSTOMER_FILE_BYTES:
+        raise HTTPException(status_code=400, detail=f"File exceeds 10 MB limit ({len(data) // 1024} KB)")
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    ext = ext if len(ext) <= 8 else "bin"
+    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
+    content_type = file.content_type or "application/octet-stream"
+    await run_in_threadpool(put_object, path, data, content_type)
+    attachment = {
+        "path": path,
+        "name": file.filename or f"file.{ext}",
+        "size": len(data),
+        "content_type": content_type,
+        "uploaded_at": now_utc().isoformat(),
+        "uploaded_by": current.user_id,
+    }
+    await db.customers.update_one({"id": cid}, {"$push": {"attachments": attachment}})
+    updated = await db.customers.find_one({"id": cid}, {"_id": 0})
+    return Customer(**updated)
+
+
+@api_router.delete("/customers/{cid}/attachments", response_model=Customer)
+async def delete_customer_attachment(cid: str, path: str, current: User = Depends(get_current_user)):
+    cust = await db.customers.find_one({"id": cid}, {"_id": 0})
+    if not cust:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    await db.customers.update_one({"id": cid}, {"$pull": {"attachments": {"path": path}}})
+    updated = await db.customers.find_one({"id": cid}, {"_id": 0})
+    return Customer(**updated)
 
 
 # ============ Employees ============

@@ -5,22 +5,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { api } from '@/src/api';
-import { Avatar, Card, Chip, EmptyState, ScreenLoader, StatusBadge } from '@/src/ui';
-import { useAuth } from '@/src/AuthContext';
+import { Card, Chip, EmptyState, ScreenLoader, StatusBadge } from '@/src/ui';
 
 const STATUSES = ['all', 'todo', 'doing', 'done'];
 
 export default function TasksScreen() {
   const router = useRouter();
-  const { user } = useAuth();
   const [tasks, setTasks] = useState<any[] | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    try { const list = await api.get<any[]>('/tasks'); setTasks(list); } catch { setTasks([]); }
+    try { setTasks(await api.get<any[]>('/tasks')); } catch { setTasks([]); }
   }, []);
-
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const filtered = useMemo(() => {
@@ -28,14 +25,6 @@ export default function TasksScreen() {
     if (filter === 'all') return tasks;
     return tasks.filter(t => t.status === filter);
   }, [tasks, filter]);
-
-  const cycle = async (task: any) => {
-    const next = task.status === 'todo' ? 'doing' : task.status === 'doing' ? 'done' : 'todo';
-    try {
-      const updated = await api.patch<any>(`/tasks/${task.id}`, { status: next });
-      setTasks(prev => (prev || []).map(t => t.id === task.id ? updated : t));
-    } catch {}
-  };
 
   return (
     <SafeAreaView edges={['top']} style={styles.root} testID="tasks-screen">
@@ -52,7 +41,7 @@ export default function TasksScreen() {
       </ScrollView>
 
       {filtered === null ? <ScreenLoader /> : filtered.length === 0 ? (
-        <EmptyState testID="tasks-empty" icon="checkmark-done-outline" title="All caught up!" subtitle="No tasks match this filter" actionLabel="Create Task" onAction={() => router.push('/tasks/new' as any)} />
+        <EmptyState testID="tasks-empty" icon="checkmark-done-outline" title="No tasks" subtitle="Create your first task to get started" actionLabel="Create Task" onAction={() => router.push('/tasks/new' as any)} />
       ) : (
         <FlatList
           testID="task-list"
@@ -60,26 +49,54 @@ export default function TasksScreen() {
           keyExtractor={(i) => i.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
           contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl }}
-          renderItem={({ item }) => (
-            <Card>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                <Pressable onPress={() => cycle(item)} testID={`toggle-${item.id}`} style={[styles.check, item.status === 'done' && { backgroundColor: colors.success, borderColor: colors.success }]}>
-                  {item.status === 'done' ? <Ionicons name="checkmark" size={16} color={colors.onSuccess} /> : item.status === 'doing' ? <View style={styles.dot} /> : null}
-                </Pressable>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemTitle, item.status === 'done' && { textDecorationLine: 'line-through', color: colors.muted }]}>{item.title}</Text>
-                  {item.assignee_name ? <Text style={styles.muted}>Assigned to {item.assignee_name}</Text> : null}
-                  {item.due_date ? <Text style={styles.muted}>Due {item.due_date}</Text> : null}
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <View style={[styles.priority, { backgroundColor: item.priority === 'high' ? colors.error + '20' : item.priority === 'low' ? colors.success + '20' : colors.warning + '20' }]}>
-                    <Text style={{ color: item.priority === 'high' ? colors.error : item.priority === 'low' ? colors.success : colors.warning, fontSize: 10, fontWeight: '800' }}>{(item.priority || 'medium').toUpperCase()}</Text>
+          renderItem={({ item }) => {
+            const stagesLen = (item.stages || []).length;
+            const idx = (item.stages || []).findIndex((s: any) => s.id === item.current_stage_id);
+            const progress = stagesLen > 0 ? Math.max(0, (idx + 1) / stagesLen) : 0;
+            return (
+              <Pressable testID={`task-${item.id}`} onPress={() => router.push(`/tasks/${item.id}` as any)}>
+                <Card>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1, paddingRight: spacing.md }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.taskNo}>{item.task_no}</Text>
+                        {item.task_type_name ? <Text style={styles.type}>• {item.task_type_name}</Text> : null}
+                      </View>
+                      <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+                      {item.assignee_name ? <Text style={styles.muted}>👤 {item.assignee_name}</Text> : null}
+                      {item.deadline ? <Text style={styles.muted}>📅 Due {item.deadline}</Text> : null}
+                    </View>
+                    <StatusBadge status={item.status} />
                   </View>
-                  <StatusBadge status={item.status} />
-                </View>
-              </View>
-            </Card>
-          )}
+                  {stagesLen > 0 ? (
+                    <View style={styles.progressWrap}>
+                      <View style={styles.progressBar}><View style={[styles.progressFill, { width: `${progress * 100}%` }]} /></View>
+                      <Text style={styles.progressLabel}>Stage {Math.max(idx + 1, 0)}/{stagesLen} • {item.current_stage_name || '—'}</Text>
+                    </View>
+                  ) : null}
+                  {(item.total_amount || 0) > 0 ? (
+                    <View style={styles.amountBar}>
+                      <Text style={styles.amountLbl}>Total</Text>
+                      <Text style={styles.amountVal}>₹ {Number(item.total_amount).toLocaleString('en-IN')}</Text>
+                      <Text style={styles.amountLbl}>• Dues</Text>
+                      <Text style={[styles.amountVal, { color: (item.dues_amount || 0) > 0 ? colors.error : colors.success }]}>₹ {Number(item.dues_amount || 0).toLocaleString('en-IN')}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.bottomRow}>
+                    <View style={[styles.priority, { backgroundColor: item.priority === 'high' ? colors.error + '20' : item.priority === 'low' ? colors.success + '20' : colors.warning + '20' }]}>
+                      <Text style={{ color: item.priority === 'high' ? colors.error : item.priority === 'low' ? colors.success : colors.warning, fontSize: 10, fontWeight: '800' }}>{(item.priority || 'medium').toUpperCase()}</Text>
+                    </View>
+                    {(item.attachments || []).length > 0 ? (
+                      <View style={styles.iconBadge}><Ionicons name="attach" size={12} color={colors.muted} /><Text style={styles.iconBadgeText}>{item.attachments.length}</Text></View>
+                    ) : null}
+                    {(item.sub_tasks || []).length > 0 ? (
+                      <View style={styles.iconBadge}><Ionicons name="list" size={12} color={colors.muted} /><Text style={styles.iconBadgeText}>{item.sub_tasks.filter((s: any) => s.done).length}/{item.sub_tasks.length}</Text></View>
+                    ) : null}
+                  </View>
+                </Card>
+              </Pressable>
+            );
+          }}
         />
       )}
     </SafeAreaView>
@@ -92,9 +109,19 @@ const styles = StyleSheet.create({
   h1: { fontSize: font.display, fontWeight: '800', color: colors.onSurface },
   addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: 'center', justifyContent: 'center' },
   chipsRow: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingVertical: spacing.sm, height: 56, alignItems: 'center' },
-  check: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.brandPrimary },
-  itemTitle: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface },
+  taskNo: { color: colors.brandPrimary, fontWeight: '800', fontSize: font.sm },
+  type: { color: colors.muted, fontSize: font.sm },
+  title: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface, marginTop: 4 },
   muted: { color: colors.muted, fontSize: font.sm, marginTop: 2 },
+  progressWrap: { marginTop: spacing.md, gap: 4 },
+  progressBar: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceSecondary, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.brandPrimary, borderRadius: 3 },
+  progressLabel: { color: colors.muted, fontSize: font.sm },
+  amountBar: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' },
+  amountLbl: { color: colors.muted, fontSize: font.sm },
+  amountVal: { color: colors.onSurface, fontWeight: '700', fontSize: font.sm },
+  bottomRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md, alignItems: 'center' },
   priority: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  iconBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.surfaceSecondary },
+  iconBadgeText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
 });

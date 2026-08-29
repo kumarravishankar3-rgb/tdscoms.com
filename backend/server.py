@@ -321,27 +321,88 @@ class EmployeeInput(BaseModel):
     ded_other: Optional[float] = 0
 
 
-class Task(BaseModel):
-    id: str = Field(default_factory=lambda: new_id("tsk"))
+class SubTask(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("sub"))
     title: str
-    description: Optional[str] = None
+    done: bool = False
+    note: Optional[str] = None
+    order: int = 0
+
+
+class StageHistoryEntry(BaseModel):
+    stage_id: str
+    stage_name: str
+    moved_at: datetime = Field(default_factory=now_utc)
+    moved_by: Optional[str] = None
+    moved_by_name: Optional[str] = None
     assignee_id: Optional[str] = None
     assignee_name: Optional[str] = None
-    priority: str = "medium"  # low, medium, high
-    status: str = "todo"  # todo, doing, done
-    due_date: Optional[str] = None
+    note: Optional[str] = None
+
+
+class Task(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("tsk"))
+    task_no: Optional[str] = None       # TSK-0001
+    title: str
+    description: Optional[str] = None
+
+    task_type_id: Optional[str] = None
+    task_type_name: Optional[str] = None
+
+    # Per-task custom stages (task creator/admin defines them)
+    stages: List[dict] = Field(default_factory=list)  # [{id,name,order,color?}]
+    current_stage_id: Optional[str] = None
+    current_stage_name: Optional[str] = None
+    stage_history: List[dict] = Field(default_factory=list)
+
+    sub_tasks: List[dict] = Field(default_factory=list)
+
+    voucher_no: Optional[str] = None
+    voucher_date: Optional[str] = None
+    total_amount: Optional[float] = 0
+    paid_amount: Optional[float] = 0
+    dues_amount: Optional[float] = 0
+
+    deadline: Optional[str] = None
+
+    assignee_id: Optional[str] = None
+    assignee_name: Optional[str] = None
+
+    priority: str = "medium"
+    status: str = "todo"
+
+    attachments: List[dict] = Field(default_factory=list)
+
     created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
 
 
 class TaskInput(BaseModel):
     title: str
     description: Optional[str] = None
+    task_type_id: Optional[str] = None
+    stages: Optional[List[dict]] = None   # optional initial stages [{name,color?}]
+    sub_tasks: Optional[List[dict]] = None
+    voucher_no: Optional[str] = None
+    voucher_date: Optional[str] = None
+    total_amount: Optional[float] = 0
+    paid_amount: Optional[float] = 0
+    deadline: Optional[str] = None
     assignee_id: Optional[str] = None
     assignee_name: Optional[str] = None
     priority: str = "medium"
-    status: str = "todo"
-    due_date: Optional[str] = None
+
+
+class StageInput(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class StagePatch(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    order: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -349,9 +410,55 @@ class TaskUpdate(BaseModel):
     priority: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
-    due_date: Optional[str] = None
+    deadline: Optional[str] = None
     assignee_id: Optional[str] = None
     assignee_name: Optional[str] = None
+    voucher_no: Optional[str] = None
+    voucher_date: Optional[str] = None
+    total_amount: Optional[float] = None
+    paid_amount: Optional[float] = None
+    sub_tasks: Optional[List[dict]] = None
+
+
+class MoveStageInput(BaseModel):
+    stage_id: str
+    assignee_id: Optional[str] = None
+    assignee_name: Optional[str] = None
+    note: Optional[str] = None
+
+
+class WorkflowStage(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("stg"))
+    name: str
+    order: int
+    color: Optional[str] = None
+    role_hint: Optional[str] = None
+
+
+class Workflow(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("wf"))
+    name: str
+    stages: List[dict]
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class WorkflowInput(BaseModel):
+    name: str
+    stages: List[dict]  # [{name, order, color?}]
+
+
+class TaskType(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("tt"))
+    name: str
+    key: Optional[str] = None
+    workflow_id: Optional[str] = None
+    is_default: bool = False
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class TaskTypeInput(BaseModel):
+    name: str
+    workflow_id: Optional[str] = None
 
 
 class AccountEntry(BaseModel):
@@ -793,6 +900,25 @@ async def get_employee(eid: str, current: User = Depends(get_current_user)):
     return Employee(**d)
 
 
+@api_router.patch("/employees/{eid}", response_model=Employee)
+async def update_employee(eid: str, payload: dict, current: User = Depends(require_admin_or_manager)):
+    allowed = {"office_id", "designation", "posting_branch", "role", "pay", "da", "hra", "ma", "ta", "other1", "other2", "ded_epfo", "ded_esic", "ded_advance", "ded_advance_installments", "ded_other", "mobile", "emergency_mobile", "address", "bank_account_no", "bank_ifsc", "bank_name", "account_holder_name", "pan", "aadhar", "date_of_birth", "epfo_no", "esic_no"}
+    updates = {k: v for k, v in payload.items() if k in allowed and v is not None}
+    if updates:
+        # If salary fields changed, recompute gross/net
+        if any(k in updates for k in ("pay","da","hra","ma","ta","other1","other2","ded_epfo","ded_esic","ded_advance","ded_other")):
+            current_doc = await db.employees.find_one({"id": eid}, {"_id": 0}) or {}
+            merged = {**current_doc, **updates}
+            merged = _compute_salary(merged)
+            updates["gross_amount"] = merged["gross_amount"]
+            updates["net_total"] = merged["net_total"]
+        await db.employees.update_one({"id": eid}, {"$set": updates})
+    d = await db.employees.find_one({"id": eid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Employee(**d)
+
+
 @api_router.delete("/employees/{eid}")
 async def delete_employee(eid: str, current: User = Depends(require_admin)):
     res = await db.employees.delete_one({"id": eid})
@@ -817,26 +943,205 @@ async def upload_employee_photo(eid: str, file: UploadFile = File(...), current:
     return Employee(**updated)
 
 
+# ============ Workflows & Task Types ============
+DEFAULT_STAGES = [
+    {"name": "Received", "order": 0, "color": "#3B82F6"},
+    {"name": "In Progress", "order": 1, "color": "#F59E0B"},
+    {"name": "Under Review", "order": 2, "color": "#8B5CF6"},
+    {"name": "Completed", "order": 3, "color": "#10B981"},
+]
+
+DEFAULT_TASK_TYPES = [
+    {"key": "digital_signature", "name": "Digital Signature"},
+    {"key": "tender", "name": "Tender"},
+    {"key": "contractor_registration", "name": "Contractor Registration Class"},
+    {"key": "gst_registration", "name": "GST Registration"},
+]
+
+
+def _stage_with_ids(stages: List[dict]) -> List[dict]:
+    out = []
+    for i, s in enumerate(sorted(stages, key=lambda x: x.get("order", 0))):
+        d = dict(s)
+        d.setdefault("id", new_id("stg"))
+        d["order"] = i
+        out.append(d)
+    return out
+
+
+async def _ensure_seed_workflows_and_types():
+    # Default workflow
+    wf = await db.workflows.find_one({"name": "Standard 4-Stage"}, {"_id": 0})
+    if not wf:
+        wf = Workflow(name="Standard 4-Stage", stages=_stage_with_ids(DEFAULT_STAGES)).dict()
+        await db.workflows.insert_one(wf)
+    wf_id = wf["id"]
+    # Default task types
+    for tt in DEFAULT_TASK_TYPES:
+        existing = await db.task_types.find_one({"key": tt["key"]}, {"_id": 0})
+        if not existing:
+            new_tt = TaskType(name=tt["name"], key=tt["key"], workflow_id=wf_id, is_default=True).dict()
+            await db.task_types.insert_one(new_tt)
+
+
+@api_router.get("/workflows", response_model=List[Workflow])
+async def list_workflows(current: User = Depends(get_current_user)):
+    docs = await db.workflows.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return [Workflow(**d) for d in docs]
+
+
+@api_router.post("/workflows", response_model=Workflow)
+async def create_workflow(payload: WorkflowInput, current: User = Depends(require_admin_or_manager)):
+    wf = Workflow(name=payload.name, stages=_stage_with_ids(payload.stages))
+    await db.workflows.insert_one(wf.dict())
+    return wf
+
+
+@api_router.get("/task-types", response_model=List[TaskType])
+async def list_task_types(current: User = Depends(get_current_user)):
+    docs = await db.task_types.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return [TaskType(**d) for d in docs]
+
+
+@api_router.post("/task-types", response_model=TaskType)
+async def create_task_type(payload: TaskTypeInput, current: User = Depends(require_admin_or_manager)):
+    # Default to standard workflow if none
+    workflow_id = payload.workflow_id
+    if not workflow_id:
+        wf = await db.workflows.find_one({"name": "Standard 4-Stage"}, {"_id": 0})
+        workflow_id = wf["id"] if wf else None
+    key = payload.name.lower().replace(" ", "_")[:30]
+    tt = TaskType(name=payload.name.strip(), key=key, workflow_id=workflow_id, is_default=False)
+    await db.task_types.insert_one(tt.dict())
+    return tt
+
+
+@api_router.delete("/task-types/{ttid}")
+async def delete_task_type(ttid: str, current: User = Depends(require_admin)):
+    doc = await db.task_types.find_one({"id": ttid}, {"_id": 0})
+    if doc and doc.get("is_default"):
+        raise HTTPException(status_code=400, detail="Cannot delete default task type")
+    res = await db.task_types.delete_one({"id": ttid})
+    return {"deleted": res.deleted_count}
+
+
 # ============ Tasks ============
+def _sub_tasks_with_ids(items: List[dict]) -> List[dict]:
+    out = []
+    for i, s in enumerate(items or []):
+        d = dict(s)
+        d.setdefault("id", new_id("sub"))
+        d.setdefault("done", False)
+        d["order"] = i
+        out.append(d)
+    return out
+
+
+async def _resolve_type(task_type_id: Optional[str]):
+    if not task_type_id:
+        return None
+    return await db.task_types.find_one({"id": task_type_id}, {"_id": 0})
+
+
+def _order_stages(stages: List[dict]) -> List[dict]:
+    out = []
+    for i, s in enumerate(sorted(stages or [], key=lambda x: x.get("order", 0))):
+        d = dict(s)
+        d.setdefault("id", new_id("stg"))
+        d["order"] = i
+        out.append(d)
+    return out
+
+
 @api_router.post("/tasks", response_model=Task)
 async def create_task(payload: TaskInput, current: User = Depends(get_current_user)):
-    t = Task(**payload.dict(), created_by=current.user_id)
+    # Auto task_no
+    counter = await db.counters.find_one_and_update(
+        {"_id": "task_no"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = (counter or {}).get("seq") or 1
+    task_no = f"TSK-{seq:04d}"
+
+    tt = await _resolve_type(payload.task_type_id)
+
+    stages = _order_stages(payload.stages or [])
+    first = stages[0] if stages else None
+
+    total = float(payload.total_amount or 0)
+    paid = float(payload.paid_amount or 0)
+    dues = round(total - paid, 2)
+
+    subs = _sub_tasks_with_ids(payload.sub_tasks or [])
+
+    initial_history = []
+    if first:
+        initial_history.append({
+            "stage_id": first["id"],
+            "stage_name": first["name"],
+            "moved_at": now_utc().isoformat(),
+            "moved_by": current.user_id,
+            "moved_by_name": current.name,
+            "assignee_id": payload.assignee_id,
+            "assignee_name": payload.assignee_name,
+            "note": "Task created",
+        })
+
+    t = Task(
+        task_no=task_no,
+        title=payload.title.strip(),
+        description=payload.description,
+        task_type_id=(tt or {}).get("id"),
+        task_type_name=(tt or {}).get("name"),
+        stages=stages,
+        current_stage_id=(first or {}).get("id"),
+        current_stage_name=(first or {}).get("name"),
+        stage_history=initial_history,
+        sub_tasks=subs,
+        voucher_no=payload.voucher_no,
+        voucher_date=payload.voucher_date,
+        total_amount=total, paid_amount=paid, dues_amount=dues,
+        deadline=payload.deadline,
+        assignee_id=payload.assignee_id, assignee_name=payload.assignee_name,
+        priority=payload.priority,
+        created_by=current.user_id, created_by_name=current.name,
+    )
     await db.tasks.insert_one(t.dict())
     return t
 
 
 @api_router.get("/tasks", response_model=List[Task])
 async def list_tasks(mine: bool = False, current: User = Depends(get_current_user)):
-    q = {}
+    q: dict = {}
     if mine or current.role == "employee":
-        q = {"assignee_id": current.user_id}
+        q = {"$or": [{"assignee_id": current.user_id}, {"created_by": current.user_id}]}
     docs = await db.tasks.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return [Task(**d) for d in docs]
+
+
+@api_router.get("/tasks/{tid}", response_model=Task)
+async def get_task(tid: str, current: User = Depends(get_current_user)):
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Task(**d)
 
 
 @api_router.patch("/tasks/{tid}", response_model=Task)
 async def update_task(tid: str, payload: TaskUpdate, current: User = Depends(get_current_user)):
     updates = {k: v for k, v in payload.dict().items() if v is not None}
+    if "sub_tasks" in updates:
+        updates["sub_tasks"] = _sub_tasks_with_ids(updates["sub_tasks"])
+    # Recompute dues if amounts changed
+    if "total_amount" in updates or "paid_amount" in updates:
+        cur = await db.tasks.find_one({"id": tid}, {"_id": 0}) or {}
+        total = float(updates.get("total_amount", cur.get("total_amount") or 0) or 0)
+        paid = float(updates.get("paid_amount", cur.get("paid_amount") or 0) or 0)
+        updates["total_amount"] = total
+        updates["paid_amount"] = paid
+        updates["dues_amount"] = round(total - paid, 2)
     if updates:
         await db.tasks.update_one({"id": tid}, {"$set": updates})
     d = await db.tasks.find_one({"id": tid}, {"_id": 0})
@@ -845,10 +1150,142 @@ async def update_task(tid: str, payload: TaskUpdate, current: User = Depends(get
     return Task(**d)
 
 
+@api_router.post("/tasks/{tid}/move-stage", response_model=Task)
+async def move_stage(tid: str, payload: MoveStageInput, current: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    stages = t.get("stages") or []
+    stage = next((s for s in stages if s["id"] == payload.stage_id), None)
+    if not stage:
+        raise HTTPException(status_code=400, detail="Invalid stage for this task")
+    history_entry = {
+        "stage_id": stage["id"],
+        "stage_name": stage["name"],
+        "moved_at": now_utc().isoformat(),
+        "moved_by": current.user_id,
+        "moved_by_name": current.name,
+        "assignee_id": payload.assignee_id or t.get("assignee_id"),
+        "assignee_name": payload.assignee_name or t.get("assignee_name"),
+        "note": payload.note,
+    }
+    total_stages = len(stages)
+    if stage["order"] == 0:
+        new_status = "todo"
+    elif stage["order"] == total_stages - 1:
+        new_status = "done"
+    else:
+        new_status = "doing"
+    updates = {
+        "current_stage_id": stage["id"],
+        "current_stage_name": stage["name"],
+        "status": new_status,
+    }
+    if payload.assignee_id is not None:
+        updates["assignee_id"] = payload.assignee_id
+        updates["assignee_name"] = payload.assignee_name
+    await db.tasks.update_one({"id": tid}, {"$set": updates, "$push": {"stage_history": history_entry}})
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    return Task(**d)
+
+
+@api_router.post("/tasks/{tid}/stages", response_model=Task)
+async def add_stage(tid: str, payload: StageInput, current: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    stages = list(t.get("stages") or [])
+    new_stage = {"id": new_id("stg"), "name": payload.name.strip(), "color": payload.color, "order": len(stages)}
+    stages.append(new_stage)
+    stages = _order_stages(stages)
+    updates: dict = {"stages": stages}
+    # If task had no current stage yet, set this as current
+    if not t.get("current_stage_id"):
+        updates["current_stage_id"] = new_stage["id"]
+        updates["current_stage_name"] = new_stage["name"]
+    await db.tasks.update_one({"id": tid}, {"$set": updates})
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    return Task(**d)
+
+
+@api_router.patch("/tasks/{tid}/stages/{sid}", response_model=Task)
+async def edit_stage(tid: str, sid: str, payload: StagePatch, current: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    stages = list(t.get("stages") or [])
+    updated = False
+    for s in stages:
+        if s["id"] == sid:
+            if payload.name is not None: s["name"] = payload.name.strip()
+            if payload.color is not None: s["color"] = payload.color
+            if payload.order is not None: s["order"] = int(payload.order)
+            updated = True
+            break
+    if not updated:
+        raise HTTPException(status_code=404, detail="Stage not found")
+    stages = _order_stages(stages)
+    updates: dict = {"stages": stages}
+    if t.get("current_stage_id") == sid and payload.name:
+        updates["current_stage_name"] = payload.name.strip()
+    await db.tasks.update_one({"id": tid}, {"$set": updates})
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    return Task(**d)
+
+
+@api_router.delete("/tasks/{tid}/stages/{sid}", response_model=Task)
+async def remove_stage(tid: str, sid: str, current: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    stages = [s for s in (t.get("stages") or []) if s["id"] != sid]
+    stages = _order_stages(stages)
+    updates: dict = {"stages": stages}
+    if t.get("current_stage_id") == sid:
+        first = stages[0] if stages else None
+        updates["current_stage_id"] = (first or {}).get("id")
+        updates["current_stage_name"] = (first or {}).get("name")
+    await db.tasks.update_one({"id": tid}, {"$set": updates})
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    return Task(**d)
+
+
 @api_router.delete("/tasks/{tid}")
 async def delete_task(tid: str, current: User = Depends(require_admin_or_manager)):
     res = await db.tasks.delete_one({"id": tid})
     return {"deleted": res.deleted_count}
+
+
+@api_router.post("/tasks/{tid}/attachments", response_model=Task)
+async def upload_task_file(tid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"File exceeds 10 MB limit ({len(data) // 1024} KB)")
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    ext = ext if len(ext) <= 8 else "bin"
+    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
+    ct = file.content_type or "application/octet-stream"
+    await run_in_threadpool(put_object, path, data, ct)
+    attachment = {
+        "path": path, "name": file.filename or f"file.{ext}", "size": len(data),
+        "content_type": ct, "uploaded_at": now_utc().isoformat(), "uploaded_by": current.user_id,
+    }
+    await db.tasks.update_one({"id": tid}, {"$push": {"attachments": attachment}})
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    return Task(**d)
+
+
+@api_router.delete("/tasks/{tid}/attachments", response_model=Task)
+async def delete_task_attachment(tid: str, path: str, current: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await db.tasks.update_one({"id": tid}, {"$pull": {"attachments": {"path": path}}})
+    d = await db.tasks.find_one({"id": tid}, {"_id": 0})
+    return Task(**d)
 
 
 # ============ Accounts ============
@@ -1104,10 +1541,27 @@ async def create_punch(
 
     settings = await get_office_settings_doc()
 
-    # Resolve employee's assigned office
+    # Resolve employee's assigned office; auto-provision employee record if missing
     emp = await db.employees.find_one({"email": current.email}, {"_id": 0})
+    if not emp:
+        # Auto-create a stub employee for this user so admin can just assign an office
+        counter = await db.counters.find_one_and_update(
+            {"_id": "employee_code"},
+            {"$inc": {"seq": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        seq = (counter or {}).get("seq") or 1
+        ddmmyyyy = _ddmmyyyy(None)
+        stub = Employee(
+            name=current.name, email=current.email, role=current.role,
+            employee_code=f"TDSC{seq:02d}{ddmmyyyy}",
+        )
+        await db.employees.insert_one(stub.dict())
+        emp = stub.dict()
+
     office = None
-    if emp and emp.get("office_id"):
+    if emp.get("office_id"):
         office = await db.offices.find_one({"id": emp["office_id"]}, {"_id": 0})
     within = True
     distance = None
@@ -1319,6 +1773,12 @@ async def startup():
             logger.info("Storage initialized")
         except Exception as e:
             logger.warning(f"Storage init failed at startup (non-fatal): {e}")
+
+        # Seed default workflow + task types
+        try:
+            await _ensure_seed_workflows_and_types()
+        except Exception as e:
+            logger.warning(f"Seed workflows failed: {e}")
     except Exception as e:
         logger.error(f"Startup error: {e}")
 

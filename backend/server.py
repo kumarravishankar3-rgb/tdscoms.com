@@ -474,6 +474,99 @@ class AccountEntry(BaseModel):
     created_at: datetime = Field(default_factory=now_utc)
 
 
+# ============ Accounting Phase 1 Models ============
+INCOME_CATEGORIES = ["DSC Services", "E-Tender Services", "Railway Registration", "Contractor Registration", "GST/Tax Services", "Other Services"]
+EXPENSE_CATEGORIES = ["Office Rent", "Salary", "Electricity", "Internet", "Travel", "Marketing", "Software/Subscription", "Office Expenses", "Other"]
+PAYMENT_MODES = ["cash", "bank", "upi", "cheque"]
+
+
+class BankAccount(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("bnk"))
+    name: str
+    bank_name: str
+    account_no: str
+    ifsc: Optional[str] = None
+    opening_balance: float = 0.0
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class BankAccountInput(BaseModel):
+    name: str
+    bank_name: str
+    account_no: str
+    ifsc: Optional[str] = None
+    opening_balance: float = 0.0
+    is_active: bool = True
+
+
+class Income(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("inc"))
+    income_no: Optional[str] = None    # INC-0001
+    date: str                          # YYYY-MM-DD
+    client_id: Optional[str] = None
+    client_name: str
+    client_mobile: Optional[str] = None
+    service_category: str
+    service_name: Optional[str] = None
+    amount: float
+    payment_mode: str                  # cash / bank / upi / cheque
+    bank_account_id: Optional[str] = None
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    remarks: Optional[str] = None
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class IncomeInput(BaseModel):
+    date: str
+    client_id: Optional[str] = None
+    client_name: str
+    client_mobile: Optional[str] = None
+    service_category: str
+    service_name: Optional[str] = None
+    amount: float
+    payment_mode: str
+    bank_account_id: Optional[str] = None
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class Expense(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("exp"))
+    expense_no: Optional[str] = None
+    date: str
+    category: str
+    amount: float
+    payment_mode: str
+    bank_account_id: Optional[str] = None
+    vendor: Optional[str] = None
+    description: Optional[str] = None
+    status: str = "pending"  # pending, verified, approved, rejected
+    verified_by: Optional[str] = None
+    approved_by: Optional[str] = None
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class ExpenseInput(BaseModel):
+    date: str
+    category: str
+    amount: float
+    payment_mode: str
+    bank_account_id: Optional[str] = None
+    vendor: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ExpenseDecision(BaseModel):
+    action: str  # verify | approve | reject
+
+
 class AccountInput(BaseModel):
     type: str
     title: str
@@ -1334,6 +1427,292 @@ async def update_account(aid: str, payload: AccountInput, current: User = Depend
 async def delete_account(aid: str, current: User = Depends(require_admin)):
     res = await db.accounts.delete_one({"id": aid})
     return {"deleted": res.deleted_count}
+
+
+# ============ Accounting: Bank Accounts ============
+@api_router.get("/bank-accounts", response_model=List[BankAccount])
+async def list_bank_accounts(current: User = Depends(get_current_user)):
+    docs = await db.bank_accounts.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return [BankAccount(**d) for d in docs]
+
+
+@api_router.post("/bank-accounts", response_model=BankAccount)
+async def create_bank_account(payload: BankAccountInput, current: User = Depends(require_admin_or_manager)):
+    b = BankAccount(**payload.dict())
+    await db.bank_accounts.insert_one(b.dict())
+    return b
+
+
+@api_router.patch("/bank-accounts/{bid}", response_model=BankAccount)
+async def update_bank_account(bid: str, payload: BankAccountInput, current: User = Depends(require_admin_or_manager)):
+    await db.bank_accounts.update_one({"id": bid}, {"$set": payload.dict()})
+    d = await db.bank_accounts.find_one({"id": bid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Not found")
+    return BankAccount(**d)
+
+
+@api_router.delete("/bank-accounts/{bid}")
+async def delete_bank_account(bid: str, current: User = Depends(require_admin)):
+    res = await db.bank_accounts.delete_one({"id": bid})
+    return {"deleted": res.deleted_count}
+
+
+# ============ Accounting: Income ============
+@api_router.get("/accounting/meta")
+async def accounting_meta(current: User = Depends(get_current_user)):
+    return {
+        "income_categories": INCOME_CATEGORIES,
+        "expense_categories": EXPENSE_CATEGORIES,
+        "payment_modes": PAYMENT_MODES,
+    }
+
+
+async def _next_no(counter_key: str, prefix: str) -> str:
+    counter = await db.counters.find_one_and_update(
+        {"_id": counter_key}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    seq = (counter or {}).get("seq") or 1
+    return f"{prefix}-{seq:04d}"
+
+
+@api_router.post("/income", response_model=Income)
+async def create_income(payload: IncomeInput, current: User = Depends(get_current_user)):
+    no = await _next_no("income_no", "INC")
+    inc = Income(**payload.dict(), income_no=no, created_by=current.user_id, created_by_name=current.name)
+    await db.income.insert_one(inc.dict())
+    return inc
+
+
+@api_router.get("/income", response_model=List[Income])
+async def list_income(client_id: Optional[str] = None, from_date: Optional[str] = None, to_date: Optional[str] = None, current: User = Depends(get_current_user)):
+    q: dict = {}
+    if client_id: q["client_id"] = client_id
+    if from_date or to_date:
+        q["date"] = {}
+        if from_date: q["date"]["$gte"] = from_date
+        if to_date: q["date"]["$lte"] = to_date
+    docs = await db.income.find(q, {"_id": 0}).sort("date", -1).to_list(1000)
+    return [Income(**d) for d in docs]
+
+
+@api_router.delete("/income/{iid}")
+async def delete_income(iid: str, current: User = Depends(require_admin_or_manager)):
+    res = await db.income.delete_one({"id": iid})
+    return {"deleted": res.deleted_count}
+
+
+# ============ Accounting: Expense ============
+@api_router.post("/expenses", response_model=Expense)
+async def create_expense(payload: ExpenseInput, current: User = Depends(get_current_user)):
+    no = await _next_no("expense_no", "EXP")
+    e = Expense(**payload.dict(), expense_no=no, created_by=current.user_id, created_by_name=current.name)
+    await db.expenses.insert_one(e.dict())
+    return e
+
+
+@api_router.get("/expenses", response_model=List[Expense])
+async def list_expenses(status: Optional[str] = None, from_date: Optional[str] = None, to_date: Optional[str] = None, current: User = Depends(get_current_user)):
+    q: dict = {}
+    if status: q["status"] = status
+    if from_date or to_date:
+        q["date"] = {}
+        if from_date: q["date"]["$gte"] = from_date
+        if to_date: q["date"]["$lte"] = to_date
+    docs = await db.expenses.find(q, {"_id": 0}).sort("date", -1).to_list(1000)
+    return [Expense(**d) for d in docs]
+
+
+@api_router.post("/expenses/{eid}/decision", response_model=Expense)
+async def decide_expense(eid: str, payload: ExpenseDecision, current: User = Depends(get_current_user)):
+    e = await db.expenses.find_one({"id": eid}, {"_id": 0})
+    if not e: raise HTTPException(status_code=404, detail="Not found")
+    if payload.action == "verify":
+        if current.role not in ("admin", "manager"):
+            raise HTTPException(status_code=403, detail="Only accounts/manager can verify")
+        upd = {"status": "verified", "verified_by": current.user_id}
+    elif payload.action == "approve":
+        if current.role != "admin":
+            raise HTTPException(status_code=403, detail="Only admin can approve")
+        upd = {"status": "approved", "approved_by": current.user_id}
+    elif payload.action == "reject":
+        if current.role not in ("admin", "manager"):
+            raise HTTPException(status_code=403, detail="Only admin/manager can reject")
+        upd = {"status": "rejected"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    await db.expenses.update_one({"id": eid}, {"$set": upd})
+    d = await db.expenses.find_one({"id": eid}, {"_id": 0})
+    return Expense(**d)
+
+
+@api_router.delete("/expenses/{eid}")
+async def delete_expense(eid: str, current: User = Depends(require_admin)):
+    res = await db.expenses.delete_one({"id": eid})
+    return {"deleted": res.deleted_count}
+
+
+# ============ Accounting: Dashboard, Cash & Bank Book, Ledgers ============
+def _sum(docs: list, key: str = "amount") -> float:
+    return round(sum(float(d.get(key) or 0) for d in docs), 2)
+
+
+@api_router.get("/accounting/dashboard")
+async def accounting_dashboard(current: User = Depends(get_current_user)):
+    from datetime import timedelta as _td
+    today = datetime.now().strftime("%Y-%m-%d")
+    yesterday = (datetime.now() - _td(days=1)).strftime("%Y-%m-%d")
+    month = today[:7]
+
+    inc_today = await db.income.find({"date": today}, {"_id": 0}).to_list(500)
+    exp_today = await db.expenses.find({"date": today}, {"_id": 0}).to_list(500)
+    inc_yest = await db.income.find({"date": yesterday}, {"_id": 0}).to_list(500)
+    exp_yest = await db.expenses.find({"date": yesterday}, {"_id": 0}).to_list(500)
+    inc_month = await db.income.find({"date": {"$regex": f"^{month}"}}, {"_id": 0}).to_list(2000)
+    exp_month = await db.expenses.find({"date": {"$regex": f"^{month}"}, "status": {"$in": ["verified", "approved", "pending"]}}, {"_id": 0}).to_list(2000)
+    all_inc = await db.income.find({}, {"_id": 0}).to_list(5000)
+    all_exp = await db.expenses.find({"status": {"$in": ["verified", "approved", "pending"]}}, {"_id": 0}).to_list(5000)
+
+    cash_income = _sum([d for d in all_inc if d.get("payment_mode") == "cash"])
+    cash_expense = _sum([d for d in all_exp if d.get("payment_mode") == "cash"])
+    cash_in_hand = round(cash_income - cash_expense, 2)
+
+    bank_accounts = await db.bank_accounts.find({}, {"_id": 0}).to_list(200)
+    bank_balances = []
+    total_bank = 0.0
+    for b in bank_accounts:
+        cred = _sum([d for d in all_inc if d.get("bank_account_id") == b["id"]])
+        deb = _sum([d for d in all_exp if d.get("bank_account_id") == b["id"]])
+        bal = round(float(b.get("opening_balance") or 0) + cred - deb, 2)
+        total_bank += bal
+        bank_balances.append({"id": b["id"], "name": b["name"], "bank_name": b["bank_name"], "account_no": b["account_no"], "balance": bal})
+
+    tasks = await db.tasks.find({}, {"_id": 0, "dues_amount": 1, "created_at": 1}).to_list(5000)
+    total_outstanding = round(sum(float(t.get("dues_amount") or 0) for t in tasks if (t.get("dues_amount") or 0) > 0), 2)
+
+    # Aging buckets from tasks
+    now = datetime.now(timezone.utc)
+    buckets = {"0-30": 0.0, "31-60": 0.0, "61-90": 0.0, "90+": 0.0}
+    for t in tasks:
+        due = float(t.get("dues_amount") or 0)
+        if due <= 0: continue
+        ca = t.get("created_at")
+        if ca and hasattr(ca, "tzinfo"):
+            if ca.tzinfo is None: ca = ca.replace(tzinfo=timezone.utc)
+            age = (now - ca).days
+        else: age = 0
+        if age <= 30: buckets["0-30"] += due
+        elif age <= 60: buckets["31-60"] += due
+        elif age <= 90: buckets["61-90"] += due
+        else: buckets["90+"] += due
+
+    # Monthly series (last 7 months)
+    series = []
+    for i in range(6, -1, -1):
+        d = (datetime.now() - _td(days=30 * i))
+        ym = d.strftime("%Y-%m")
+        mi = _sum([r for r in all_inc if (r.get("date") or "").startswith(ym)])
+        me = _sum([r for r in all_exp if (r.get("date") or "").startswith(ym)])
+        series.append({"label": d.strftime("%b"), "income": mi, "expense": me})
+
+    # Top services / employees (this month)
+    from collections import defaultdict
+    svc_map, emp_map = defaultdict(float), defaultdict(float)
+    for r in inc_month:
+        svc_map[r.get("service_category") or "Other"] += float(r.get("amount") or 0)
+        if r.get("employee_name"): emp_map[r["employee_name"]] += float(r.get("amount") or 0)
+    top_services = [{"name": k, "amount": round(v, 2)} for k, v in sorted(svc_map.items(), key=lambda x: -x[1])[:5]]
+    top_employees = [{"name": k, "amount": round(v, 2)} for k, v in sorted(emp_map.items(), key=lambda x: -x[1])[:5]]
+
+    recent_collections = sorted(all_inc, key=lambda x: (x.get("date") or "", x.get("created_at") or ""), reverse=True)[:5]
+    recent_expenses = sorted(all_exp, key=lambda x: (x.get("date") or "", x.get("created_at") or ""), reverse=True)[:5]
+
+    return {
+        "today_income": _sum(inc_today),
+        "today_expense": _sum(exp_today),
+        "yesterday_income": _sum(inc_yest),
+        "yesterday_expense": _sum(exp_yest),
+        "cash_in_hand": cash_in_hand,
+        "total_bank": round(total_bank, 2),
+        "bank_balances": bank_balances,
+        "total_outstanding": total_outstanding,
+        "outstanding_clients": sum(1 for t in tasks if (t.get("dues_amount") or 0) > 0),
+        "pending_expense_approvals": await db.expenses.count_documents({"status": "pending"}),
+        "month_income": _sum(inc_month),
+        "month_expense": _sum(exp_month),
+        "month_profit": round(_sum(inc_month) - _sum(exp_month), 2),
+        "monthly_series": series,
+        "top_services": top_services,
+        "top_employees": top_employees,
+        "recent_collections": recent_collections,
+        "recent_expenses": recent_expenses,
+        "aging_buckets": {k: round(v, 2) for k, v in buckets.items()},
+    }
+
+
+@api_router.get("/accounting/cash-book")
+async def cash_book(from_date: Optional[str] = None, to_date: Optional[str] = None, current: User = Depends(get_current_user)):
+    q_inc: dict = {"payment_mode": "cash"}
+    q_exp: dict = {"payment_mode": "cash"}
+    if from_date or to_date:
+        d: dict = {}
+        if from_date: d["$gte"] = from_date
+        if to_date: d["$lte"] = to_date
+        q_inc["date"] = d; q_exp["date"] = d
+    inc = await db.income.find(q_inc, {"_id": 0}).to_list(2000)
+    exp = await db.expenses.find(q_exp, {"_id": 0}).to_list(2000)
+    entries = []
+    for d in inc:
+        entries.append({"date": d["date"], "type": "in", "amount": d["amount"], "party": d.get("client_name"), "category": d.get("service_category"), "no": d.get("income_no"), "id": d["id"]})
+    for d in exp:
+        entries.append({"date": d["date"], "type": "out", "amount": d["amount"], "party": d.get("vendor"), "category": d.get("category"), "no": d.get("expense_no"), "id": d["id"]})
+    entries.sort(key=lambda x: x["date"])
+    running = 0.0
+    for e in entries:
+        running += e["amount"] if e["type"] == "in" else -e["amount"]
+        e["running"] = round(running, 2)
+    total_in = _sum([e for e in entries if e["type"] == "in"])
+    total_out = _sum([e for e in entries if e["type"] == "out"])
+    return {"entries": entries, "total_in": total_in, "total_out": total_out, "closing": round(total_in - total_out, 2)}
+
+
+@api_router.get("/accounting/bank-book")
+async def bank_book(bank_id: str, from_date: Optional[str] = None, to_date: Optional[str] = None, current: User = Depends(get_current_user)):
+    b = await db.bank_accounts.find_one({"id": bank_id}, {"_id": 0})
+    if not b: raise HTTPException(status_code=404, detail="Bank account not found")
+    q_inc: dict = {"bank_account_id": bank_id}
+    q_exp: dict = {"bank_account_id": bank_id}
+    if from_date or to_date:
+        d: dict = {}
+        if from_date: d["$gte"] = from_date
+        if to_date: d["$lte"] = to_date
+        q_inc["date"] = d; q_exp["date"] = d
+    inc = await db.income.find(q_inc, {"_id": 0}).to_list(2000)
+    exp = await db.expenses.find(q_exp, {"_id": 0}).to_list(2000)
+    entries = []
+    for d in inc:
+        entries.append({"date": d["date"], "type": "credit", "amount": d["amount"], "party": d.get("client_name"), "category": d.get("service_category"), "no": d.get("income_no"), "id": d["id"]})
+    for d in exp:
+        entries.append({"date": d["date"], "type": "debit", "amount": d["amount"], "party": d.get("vendor"), "category": d.get("category"), "no": d.get("expense_no"), "id": d["id"]})
+    entries.sort(key=lambda x: x["date"])
+    running = float(b.get("opening_balance") or 0)
+    for e in entries:
+        running += e["amount"] if e["type"] == "credit" else -e["amount"]
+        e["running"] = round(running, 2)
+    return {"bank": b, "entries": entries, "closing": round(running, 2)}
+
+
+@api_router.get("/accounting/client-ledger")
+async def client_ledger(client_id: str, current: User = Depends(get_current_user)):
+    client = await db.customers.find_one({"id": client_id}, {"_id": 0})
+    if not client: raise HTTPException(status_code=404, detail="Client not found")
+    inc = await db.income.find({"client_id": client_id}, {"_id": 0}).sort("date", -1).to_list(1000)
+    # Total service value + dues from tasks (basic linking: matching customer via voucher_no or assignee — here we just show all tasks with this client via task.description or nothing)
+    total_received = _sum(inc)
+    return {
+        "client": {"id": client["id"], "name": client["name"], "mobile": client.get("mobile"), "customer_code": client.get("customer_code")},
+        "income_entries": inc,
+        "total_received": total_received,
+    }
 
 
 # ============ HR: Attendance ============

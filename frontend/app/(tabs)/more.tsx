@@ -12,10 +12,11 @@ export default function MoreScreen() {
   const router = useRouter();
 
   const rows = [
+    { icon: 'wallet', label: 'Accounting', route: '/accounting', color: colors.success, testID: 'row-accounting' },
     { icon: 'document-text', label: 'Tender Library', route: '/tenders', color: colors.error, testID: 'row-tenders' },
     { icon: 'people', label: 'Employees', route: '/employees', color: colors.brandPrimary, testID: 'row-employees' },
     { icon: 'calendar', label: 'Attendance & Leaves', route: '/hr', color: colors.success, testID: 'row-hr' },
-    { icon: 'cash', label: 'Accounts', route: '/(tabs)/business', color: colors.warning, testID: 'row-accounts' },
+    { icon: 'cash', label: 'Simple Accounts', route: '/(tabs)/business', color: colors.warning, testID: 'row-accounts' },
   ];
 
   const adminRows = user?.role === 'admin' ? [

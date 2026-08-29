@@ -159,6 +159,25 @@ export const api = {
     if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
     return data;
   },
+  uploadTenderSlot: async (tid: string, slot: 'nit-copy' | 'boq' | 'documents', file: { uri: string; name: string; type: string }) => {
+    const token = await tokenStore.get();
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(file.uri)).blob();
+      form.append('file', blob, file.name);
+    } else {
+      form.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
+    }
+    const res = await fetch(`${BASE}/api/tenders/${tid}/${slot}`, {
+      method: 'POST',
+      body: form as any,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
+    return data;
+  },
 };
 
 export const captureSelfie = async (): Promise<{ uri: string; name: string; type: string } | null> => {

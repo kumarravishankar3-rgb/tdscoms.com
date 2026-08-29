@@ -36,10 +36,17 @@ export default function TendersScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
                   <View style={styles.icon}><Ionicons name="document-text" size={20} color={colors.error} /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                    {item.reference_no ? <Text style={styles.muted}>Ref: {item.reference_no}</Text> : null}
-                    {item.submission_deadline ? <Text style={styles.muted}>Deadline: {item.submission_deadline}</Text> : null}
-                    {item.file_name ? <Text style={[styles.muted, { color: colors.brandPrimary }]}><Ionicons name="attach" size={12} /> {item.file_name}</Text> : null}
+                    {item.tender_code ? <Text style={styles.code}>{item.tender_code}</Text> : null}
+                    <Text style={styles.title} numberOfLines={2}>{item.name_of_work || item.title}</Text>
+                    {item.nit_no ? <Text style={styles.muted}>NIT: {item.nit_no}</Text> : null}
+                    {item.district ? <Text style={styles.muted}>📍 {item.district}{item.department ? ` • ${item.department}` : ''}</Text> : null}
+                    {item.last_date ? <Text style={styles.muted}>Last date: {item.last_date}</Text> : null}
+                    {item.estimated_cost != null ? <Text style={[styles.muted, { color: colors.brandPrimary, fontWeight: '700' }]}>₹ {Number(item.estimated_cost).toLocaleString('en-IN')}</Text> : null}
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                      {item.nit_copy ? <View style={styles.badge}><Ionicons name="checkmark" size={10} color={colors.success} /><Text style={styles.badgeText}>NIT</Text></View> : null}
+                      {item.boq ? <View style={styles.badge}><Ionicons name="checkmark" size={10} color={colors.success} /><Text style={styles.badgeText}>BOQ</Text></View> : null}
+                      {(item.other_documents || []).length > 0 ? <View style={styles.badge}><Ionicons name="attach" size={10} color={colors.muted} /><Text style={styles.badgeText}>{item.other_documents.length}</Text></View> : null}
+                    </View>
                   </View>
                   <StatusBadge status={item.status} />
                 </View>
@@ -54,6 +61,9 @@ export default function TendersScreen() {
 const styles = StyleSheet.create({
   add: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brandPrimary, alignItems: 'center', justifyContent: 'center' },
   icon: { width: 40, height: 40, borderRadius: 10, backgroundColor: colors.error + '15', alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface },
+  code: { color: colors.brandPrimary, fontWeight: '800', fontSize: font.sm },
+  title: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface, marginTop: 2 },
   muted: { color: colors.muted, fontSize: font.sm, marginTop: 2 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.surfaceSecondary },
+  badgeText: { color: colors.muted, fontSize: 10, fontWeight: '700' },
 });

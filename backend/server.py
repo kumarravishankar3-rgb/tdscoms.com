@@ -527,25 +527,44 @@ class LeaveDecision(BaseModel):
 
 class Tender(BaseModel):
     id: str = Field(default_factory=lambda: new_id("tnd"))
-    title: str
-    reference_no: Optional[str] = None
+    tender_code: Optional[str] = None  # auto TND-0001
+
+    # Core
+    name_of_work: str
+    estimated_cost: Optional[float] = None
+    contractor_class: Optional[str] = None
+    nit_no: Optional[str] = None
     department: Optional[str] = None
-    value: Optional[float] = None
-    submission_deadline: Optional[str] = None
+    district: Optional[str] = None
+    last_date: Optional[str] = None      # last date of tender submission
     status: str = "open"  # open, submitted, awarded, lost
     description: Optional[str] = None
+
+    # File slots
+    nit_copy: Optional[dict] = None      # {path,name,size,content_type,uploaded_at}
+    boq: Optional[dict] = None           # single file
+    other_documents: List[dict] = Field(default_factory=list)  # multiple files
+
+    # Backward-compat (kept optional; new UI does not use these)
+    title: Optional[str] = None
+    reference_no: Optional[str] = None
+    value: Optional[float] = None
+    submission_deadline: Optional[str] = None
     file_path: Optional[str] = None
     file_name: Optional[str] = None
+
     created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
 
 
 class TenderInput(BaseModel):
-    title: str
-    reference_no: Optional[str] = None
+    name_of_work: str
+    estimated_cost: Optional[float] = None
+    contractor_class: Optional[str] = None
+    nit_no: Optional[str] = None
     department: Optional[str] = None
-    value: Optional[float] = None
-    submission_deadline: Optional[str] = None
+    district: Optional[str] = None
+    last_date: Optional[str] = None
     status: str = "open"
     description: Optional[str] = None
 
@@ -1364,9 +1383,31 @@ async def decide_leave(lid: str, payload: LeaveDecision, current: User = Depends
 
 
 # ============ Tenders ============
+async def _save_tender_file(current: User, file: UploadFile) -> dict:
+    data = await file.read()
+    if len(data) > 25 * 1024 * 1024:  # tenders can be a bit bigger, 25 MB cap
+        raise HTTPException(status_code=400, detail="File exceeds 25 MB limit")
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    ext = ext if len(ext) <= 8 else "bin"
+    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
+    ct = file.content_type or "application/octet-stream"
+    await run_in_threadpool(put_object, path, data, ct)
+    return {
+        "path": path, "name": file.filename or f"file.{ext}", "size": len(data),
+        "content_type": ct, "uploaded_at": now_utc().isoformat(), "uploaded_by": current.user_id,
+    }
+
+
 @api_router.post("/tenders", response_model=Tender)
 async def create_tender(payload: TenderInput, current: User = Depends(get_current_user)):
-    t = Tender(**payload.dict(), created_by=current.user_id)
+    counter = await db.counters.find_one_and_update(
+        {"_id": "tender_code"}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    seq = (counter or {}).get("seq") or 1
+    tender_code = f"TND-{seq:04d}"
+    t = Tender(**payload.dict(), tender_code=tender_code, title=payload.name_of_work,
+               submission_deadline=payload.last_date, value=payload.estimated_cost,
+               created_by=current.user_id)
     await db.tenders.insert_one(t.dict())
     return t
 
@@ -1387,7 +1428,11 @@ async def get_tender(tid: str, current: User = Depends(get_current_user)):
 
 @api_router.patch("/tenders/{tid}", response_model=Tender)
 async def update_tender(tid: str, payload: TenderInput, current: User = Depends(get_current_user)):
-    await db.tenders.update_one({"id": tid}, {"$set": payload.dict()})
+    updates = payload.dict()
+    updates["title"] = payload.name_of_work
+    updates["value"] = payload.estimated_cost
+    updates["submission_deadline"] = payload.last_date
+    await db.tenders.update_one({"id": tid}, {"$set": updates})
     d = await db.tenders.find_one({"id": tid}, {"_id": 0})
     if not d:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1400,18 +1445,51 @@ async def delete_tender(tid: str, current: User = Depends(require_admin_or_manag
     return {"deleted": res.deleted_count}
 
 
+@api_router.post("/tenders/{tid}/nit-copy", response_model=Tender)
+async def upload_nit_copy(tid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    d = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Tender not found")
+    meta = await _save_tender_file(current, file)
+    await db.tenders.update_one({"id": tid}, {"$set": {"nit_copy": meta}})
+    d2 = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    return Tender(**d2)
+
+
+@api_router.post("/tenders/{tid}/boq", response_model=Tender)
+async def upload_boq(tid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    d = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Tender not found")
+    meta = await _save_tender_file(current, file)
+    await db.tenders.update_one({"id": tid}, {"$set": {"boq": meta}})
+    d2 = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    return Tender(**d2)
+
+
+@api_router.post("/tenders/{tid}/documents", response_model=Tender)
+async def upload_tender_document(tid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    d = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Tender not found")
+    meta = await _save_tender_file(current, file)
+    await db.tenders.update_one({"id": tid}, {"$push": {"other_documents": meta}})
+    d2 = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    return Tender(**d2)
+
+
+@api_router.delete("/tenders/{tid}/documents", response_model=Tender)
+async def delete_tender_document(tid: str, path: str, current: User = Depends(get_current_user)):
+    await db.tenders.update_one({"id": tid}, {"$pull": {"other_documents": {"path": path}}})
+    d = await db.tenders.find_one({"id": tid}, {"_id": 0})
+    return Tender(**d)
+
+
+# Legacy single-file upload — keep so any lingering UI works
 @api_router.post("/tenders/{tid}/upload", response_model=Tender)
 async def upload_tender_file(tid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
     d = await db.tenders.find_one({"id": tid}, {"_id": 0})
     if not d:
         raise HTTPException(status_code=404, detail="Tender not found")
-    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
-    ext = ext if len(ext) <= 8 else "bin"
-    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
-    data = await file.read()
-    content_type = file.content_type or "application/octet-stream"
-    await run_in_threadpool(put_object, path, data, content_type)
-    await db.tenders.update_one({"id": tid}, {"$set": {"file_path": path, "file_name": file.filename}})
+    meta = await _save_tender_file(current, file)
+    await db.tenders.update_one({"id": tid}, {"$set": {"other_documents_legacy": meta, "file_path": meta["path"], "file_name": meta["name"]}, "$push": {"other_documents": meta}})
     d2 = await db.tenders.find_one({"id": tid}, {"_id": 0})
     return Tender(**d2)
 

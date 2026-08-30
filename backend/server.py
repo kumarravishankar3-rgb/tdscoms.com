@@ -567,6 +567,91 @@ class ExpenseDecision(BaseModel):
     action: str  # verify | approve | reject
 
 
+# ============ Items (Inventory / catalog) ============
+class Item(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("itm"))
+    item_code: Optional[str] = None
+    name: str
+    unit: str = "PCS"
+    hsn_sac: Optional[str] = None
+    sale_price: float = 0.0
+    purchase_price: float = 0.0
+    tax_rate: float = 0.0  # GST %
+    is_service: bool = False
+    stock: float = 0.0
+    low_stock_alert: float = 0.0
+    description: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class ItemInput(BaseModel):
+    name: str
+    unit: str = "PCS"
+    hsn_sac: Optional[str] = None
+    sale_price: float = 0.0
+    purchase_price: float = 0.0
+    tax_rate: float = 0.0
+    is_service: bool = False
+    stock: float = 0.0
+    low_stock_alert: float = 0.0
+    description: Optional[str] = None
+
+
+# ============ Invoices (Sale / Purchase) ============
+class InvoiceItem(BaseModel):
+    item_id: Optional[str] = None
+    name: str
+    qty: float = 1
+    unit: str = "PCS"
+    price: float = 0.0
+    tax_rate: float = 0.0  # % GST
+    discount: float = 0.0
+    amount: float = 0.0    # qty*price - discount + tax
+
+
+class Invoice(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("inv"))
+    invoice_no: Optional[str] = None    # SI-0001 / PB-0001
+    invoice_type: str = "sale"          # sale | purchase
+    payment_type: str = "credit"        # credit | cash
+    date: str                            # YYYY-MM-DD
+    payment_terms: Optional[str] = None  # Net 15/30/45/60/90 or Custom
+    due_date: Optional[str] = None
+    party_id: str
+    party_name: str
+    party_mobile: Optional[str] = None
+    party_gst: Optional[str] = None
+    items: List[InvoiceItem] = Field(default_factory=list)
+    subtotal: float = 0.0
+    total_discount: float = 0.0
+    total_tax: float = 0.0
+    total_amount: float = 0.0
+    paid_amount: float = 0.0
+    balance: float = 0.0
+    status: str = "unpaid"  # unpaid | partial | paid | cancelled
+    notes: Optional[str] = None
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class InvoiceInput(BaseModel):
+    invoice_type: str = "sale"
+    payment_type: str = "credit"
+    date: str
+    payment_terms: Optional[str] = None
+    due_date: Optional[str] = None
+    party_id: str
+    party_name: str
+    party_mobile: Optional[str] = None
+    party_gst: Optional[str] = None
+    items: List[InvoiceItem] = Field(default_factory=list)
+    total_amount: float = 0.0
+    paid_amount: float = 0.0
+    notes: Optional[str] = None
+
+
 class AccountInput(BaseModel):
     type: str
     title: str
@@ -860,6 +945,21 @@ async def logout(authorization: Optional[str] = Header(None)):
 
 
 # ============ Customers ============
+async def _find_customer_duplicate(payload_dict: dict, exclude_id: Optional[str] = None) -> Optional[dict]:
+    """Return existing customer doc if any unique field matches (mobile/whatsapp/pan/aadhar/gst_no/contractor_reg_no/email)."""
+    unique_pairs = []
+    for f in ("mobile", "whatsapp", "pan", "aadhar", "gst_no", "contractor_reg_no", "email"):
+        val = (payload_dict.get(f) or "").strip()
+        if val and val.upper() not in ("NA", "N/A", "NONE", "-"):
+            unique_pairs.append({f: val})
+    if not unique_pairs:
+        return None
+    q: dict = {"$or": unique_pairs}
+    if exclude_id:
+        q["id"] = {"$ne": exclude_id}
+    return await db.customers.find_one(q, {"_id": 0})
+
+
 @api_router.post("/customers", response_model=Customer)
 async def create_customer(payload: CustomerInput, current: User = Depends(get_current_user)):
     # Validate mandatory fields (Pydantic already enforces presence; also block empty strings)
@@ -869,6 +969,25 @@ async def create_customer(payload: CustomerInput, current: User = Depends(get_cu
             missing.append(k)
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing mandatory: {', '.join(missing)}")
+
+    # Duplicate check across mobile/PAN/Aadhar/GST/email/whatsapp/reg_no
+    dup = await _find_customer_duplicate(payload.dict())
+    if dup:
+        matched_on = []
+        for f in ("mobile", "whatsapp", "pan", "aadhar", "gst_no", "contractor_reg_no", "email"):
+            if (getattr(payload, f, None) or "").strip() and (dup.get(f) or "").strip() == (getattr(payload, f) or "").strip():
+                matched_on.append(f.upper())
+        raise HTTPException(status_code=409, detail={
+            "message": f"Customer already exists ({', '.join(matched_on)} match)",
+            "matched_on": matched_on,
+            "existing": {
+                "id": dup.get("id"),
+                "customer_code": dup.get("customer_code"),
+                "name": dup.get("name"),
+                "mobile": dup.get("mobile"),
+                "pan": dup.get("pan"),
+            },
+        })
 
     # Atomically increment counter to build unique customer_code like TRV-CUST-0001
     counter = await db.counters.find_one_and_update(
@@ -883,6 +1002,69 @@ async def create_customer(payload: CustomerInput, current: User = Depends(get_cu
     c = Customer(**payload.dict(), customer_code=code, created_by=current.user_id)
     await db.customers.insert_one(c.dict())
     return c
+
+
+class QuickPartyInput(BaseModel):
+    name: str
+    mobile: str
+    whatsapp: Optional[str] = None
+    pan: Optional[str] = None
+    aadhar: Optional[str] = None
+    email: Optional[str] = None
+    gst_no: Optional[str] = None
+    address: Optional[str] = None
+
+
+@api_router.post("/customers/quick", response_model=Customer)
+async def quick_add_party(payload: QuickPartyInput, current: User = Depends(get_current_user)):
+    """Simplified inline party add for voucher/invoice screens. Auto-fills whatsapp=mobile, aadhar/pan as N/A if missing."""
+    if not payload.name.strip() or not payload.mobile.strip():
+        raise HTTPException(status_code=400, detail="Name and mobile are required")
+    body = payload.dict()
+    body["whatsapp"] = body.get("whatsapp") or body["mobile"]
+    body["pan"] = body.get("pan") or "NA"
+    body["aadhar"] = body.get("aadhar") or "NA"
+    dup = await _find_customer_duplicate(body)
+    if dup:
+        raise HTTPException(status_code=409, detail={
+            "message": "Party already exists (matched mobile/PAN/Aadhar/GST/email)",
+            "existing": {
+                "id": dup.get("id"),
+                "customer_code": dup.get("customer_code"),
+                "name": dup.get("name"),
+                "mobile": dup.get("mobile"),
+            },
+        })
+    counter = await db.counters.find_one_and_update(
+        {"_id": "customer_code"}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    seq = (counter or {}).get("seq") or 1
+    code = f"TRV-CUST-{seq:04d}"
+    c = Customer(
+        name=body["name"].strip(), mobile=body["mobile"].strip(), whatsapp=body["whatsapp"].strip(),
+        pan=body["pan"], aadhar=body["aadhar"], email=body.get("email"), gst_no=body.get("gst_no"),
+        address=body.get("address"), customer_code=code, created_by=current.user_id,
+    )
+    await db.customers.insert_one(c.dict())
+    return c
+
+
+@api_router.get("/customers/search", response_model=List[Customer])
+async def search_customers(q: str = "", limit: int = 25, current: User = Depends(get_current_user)):
+    """Search customers by any of: name, customer_code, mobile, whatsapp, PAN, Aadhar, email, GST no, contractor_reg_no."""
+    s = (q or "").strip()
+    if not s:
+        docs = await db.customers.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+        return [Customer(**d) for d in docs]
+    # case-insensitive regex on multiple fields
+    import re
+    rx = {"$regex": re.escape(s), "$options": "i"}
+    query = {"$or": [
+        {"name": rx}, {"customer_code": rx}, {"mobile": rx}, {"whatsapp": rx},
+        {"pan": rx}, {"aadhar": rx}, {"email": rx}, {"gst_no": rx}, {"contractor_reg_no": rx},
+    ]}
+    docs = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return [Customer(**d) for d in docs]
 
 
 @api_router.get("/customers", response_model=List[Customer])
@@ -901,6 +1083,12 @@ async def get_customer(cid: str, current: User = Depends(get_current_user)):
 
 @api_router.put("/customers/{cid}", response_model=Customer)
 async def update_customer(cid: str, payload: CustomerInput, current: User = Depends(get_current_user)):
+    dup = await _find_customer_duplicate(payload.dict(), exclude_id=cid)
+    if dup:
+        raise HTTPException(status_code=409, detail={
+            "message": "Another customer already has these unique fields (mobile/PAN/Aadhar/GST/email/reg no)",
+            "existing": {"id": dup.get("id"), "customer_code": dup.get("customer_code"), "name": dup.get("name")},
+        })
     await db.customers.update_one({"id": cid}, {"$set": payload.dict()})
     d = await db.customers.find_one({"id": cid}, {"_id": 0})
     if not d:
@@ -1548,6 +1736,125 @@ async def decide_expense(eid: str, payload: ExpenseDecision, current: User = Dep
 @api_router.delete("/expenses/{eid}")
 async def delete_expense(eid: str, current: User = Depends(require_admin)):
     res = await db.expenses.delete_one({"id": eid})
+    return {"deleted": res.deleted_count}
+
+
+# ============ Items (catalog) ============
+@api_router.get("/items", response_model=List[Item])
+async def list_items(q: Optional[str] = None, current: User = Depends(get_current_user)):
+    query: dict = {}
+    if q:
+        import re
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        query = {"$or": [{"name": rx}, {"item_code": rx}, {"hsn_sac": rx}]}
+    docs = await db.items.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return [Item(**d) for d in docs]
+
+
+@api_router.post("/items", response_model=Item)
+async def create_item(payload: ItemInput, current: User = Depends(get_current_user)):
+    # unique by name (case-insensitive)
+    existing = await db.items.find_one({"name": {"$regex": f"^{payload.name.strip()}$", "$options": "i"}}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=409, detail={"message": f"Item '{payload.name}' already exists", "existing": {"id": existing["id"], "name": existing["name"]}})
+    code = await _next_no("item_code", "ITM")
+    itm = Item(**payload.dict(), item_code=code, created_by=current.user_id)
+    await db.items.insert_one(itm.dict())
+    return itm
+
+
+@api_router.patch("/items/{iid}", response_model=Item)
+async def update_item(iid: str, payload: ItemInput, current: User = Depends(get_current_user)):
+    await db.items.update_one({"id": iid}, {"$set": payload.dict()})
+    d = await db.items.find_one({"id": iid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Not found")
+    return Item(**d)
+
+
+@api_router.delete("/items/{iid}")
+async def delete_item(iid: str, current: User = Depends(require_admin_or_manager)):
+    res = await db.items.delete_one({"id": iid})
+    return {"deleted": res.deleted_count}
+
+
+# ============ Invoices (Sale / Purchase) ============
+def _recalc_invoice(items: List[InvoiceItem]):
+    subtotal = 0.0; total_discount = 0.0; total_tax = 0.0; total_amount = 0.0
+    out: List[InvoiceItem] = []
+    for it in items:
+        line = it.qty * it.price
+        after_disc = max(0.0, line - it.discount)
+        tax = round(after_disc * (it.tax_rate or 0) / 100.0, 2)
+        amt = round(after_disc + tax, 2)
+        it_copy = it.copy(update={"amount": amt})
+        out.append(it_copy)
+        subtotal += line
+        total_discount += it.discount
+        total_tax += tax
+        total_amount += amt
+    return out, round(subtotal, 2), round(total_discount, 2), round(total_tax, 2), round(total_amount, 2)
+
+
+@api_router.post("/invoices", response_model=Invoice)
+async def create_invoice(payload: InvoiceInput, current: User = Depends(get_current_user)):
+    if not payload.party_id or not payload.party_name.strip():
+        raise HTTPException(status_code=400, detail="Party (Customer) is required")
+    # Duplicate check: same party + date + total_amount within same invoice_type (guard rail)
+    dup = await db.invoices.find_one({
+        "party_id": payload.party_id,
+        "date": payload.date,
+        "invoice_type": payload.invoice_type,
+        "status": {"$ne": "cancelled"},
+    }, {"_id": 0})
+    if dup:
+        raise HTTPException(status_code=409, detail={
+            "message": f"An invoice already exists for this party on {payload.date}",
+            "existing": {"id": dup.get("id"), "invoice_no": dup.get("invoice_no"), "total_amount": dup.get("total_amount")},
+        })
+    items, subtotal, tdisc, ttax, ttotal = _recalc_invoice(payload.items or [])
+    prefix = "SI" if payload.invoice_type == "sale" else "PB"
+    counter_key = "sale_invoice_no" if payload.invoice_type == "sale" else "purchase_bill_no"
+    no = await _next_no(counter_key, prefix)
+    total = ttotal if ttotal > 0 else float(payload.total_amount or 0)
+    paid = float(payload.paid_amount or 0)
+    if payload.payment_type == "cash": paid = total
+    balance = round(total - paid, 2)
+    status = "paid" if balance <= 0 and total > 0 else ("partial" if paid > 0 else "unpaid")
+    inv = Invoice(
+        invoice_no=no, invoice_type=payload.invoice_type, payment_type=payload.payment_type,
+        date=payload.date, payment_terms=payload.payment_terms, due_date=payload.due_date,
+        party_id=payload.party_id, party_name=payload.party_name, party_mobile=payload.party_mobile, party_gst=payload.party_gst,
+        items=items, subtotal=subtotal, total_discount=tdisc, total_tax=ttax, total_amount=total,
+        paid_amount=paid, balance=balance, status=status, notes=payload.notes,
+        created_by=current.user_id, created_by_name=current.name,
+    )
+    await db.invoices.insert_one(inv.dict())
+    return inv
+
+
+@api_router.get("/invoices", response_model=List[Invoice])
+async def list_invoices(invoice_type: Optional[str] = None, party_id: Optional[str] = None, from_date: Optional[str] = None, to_date: Optional[str] = None, current: User = Depends(get_current_user)):
+    q: dict = {}
+    if invoice_type: q["invoice_type"] = invoice_type
+    if party_id: q["party_id"] = party_id
+    if from_date or to_date:
+        q["date"] = {}
+        if from_date: q["date"]["$gte"] = from_date
+        if to_date: q["date"]["$lte"] = to_date
+    docs = await db.invoices.find(q, {"_id": 0}).sort("date", -1).to_list(500)
+    return [Invoice(**d) for d in docs]
+
+
+@api_router.get("/invoices/{iid}", response_model=Invoice)
+async def get_invoice(iid: str, current: User = Depends(get_current_user)):
+    d = await db.invoices.find_one({"id": iid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Not found")
+    return Invoice(**d)
+
+
+@api_router.delete("/invoices/{iid}")
+async def delete_invoice(iid: str, current: User = Depends(require_admin_or_manager)):
+    res = await db.invoices.delete_one({"id": iid})
     return {"deleted": res.deleted_count}
 
 

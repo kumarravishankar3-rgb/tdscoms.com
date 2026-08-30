@@ -65,7 +65,18 @@ export default function NewCustomer() {
       });
       setOk(`Saved ✓ Customer ID: ${created.customer_code || created.id}`);
       setTimeout(() => router.replace(`/customers/${created.id}` as any), 600);
-    } catch (e: any) { setErr(e?.message || 'Failed'); } finally { setBusy(false); }
+    } catch (e: any) {
+      // Try to parse structured duplicate detail
+      let msg = e?.message || 'Failed';
+      try {
+        const parsed = typeof msg === 'string' && msg.startsWith('{') ? JSON.parse(msg) : null;
+        if (parsed?.message) {
+          const existing = parsed.existing || {};
+          msg = `${parsed.message}\n\nExisting: ${existing.customer_code || ''} • ${existing.name || ''} • ${existing.mobile || ''}`;
+        }
+      } catch {}
+      setErr(String(msg));
+    } finally { setBusy(false); }
   };
 
   return (

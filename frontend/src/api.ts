@@ -49,7 +49,14 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    const msg = (data && (data.detail || data.message)) || `Request failed (${res.status})`;
+    let msg: string;
+    if (data && data.detail !== undefined) {
+      msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+    } else if (data && data.message) {
+      msg = String(data.message);
+    } else {
+      msg = `Request failed (${res.status})`;
+    }
     throw new Error(msg);
   }
   return data as T;

@@ -1,0 +1,42 @@
+{
+  "summary": "Backend Phase 2 (Accounts module) regression complete. 27/27 pytest cases passed against the internal http://localhost:8001 base URL as admin (admin@triveni.com). All four scenarios in the review request are green: (1) GET /api/customers/search matches by name, customer_code, mobile, whatsapp, PAN, email, GST — and empty q returns most-recent customers; (2) duplicate customer prevention returns HTTP 409 with detail={message, matched_on, existing{id,customer_code,name,mobile,pan}} for mobile / PAN / GST / email / whatsapp collisions on POST /api/customers, on POST /api/customers/quick, and on PUT /api/customers/{cid}; (3) /api/items CRUD works — POST auto-generates ITM-000X, case-insensitive duplicate name returns 409 with existing{id,name}, GET ?q=DSC finds it, PATCH updates persist via GET, DELETE by admin returns {deleted:1}; (4) /api/invoices — sale invoice with qty=2/price=1000/tax=18%/discount=100 correctly server-computes subtotal=2000, total_discount=100, total_tax=342, total_amount=2242, paid_amount=2242 (payment_type=cash auto-pays), balance=0, status='paid', invoice_no prefix SI-; second POST for same party+date+type returns 409 with existing invoice_no; purchase invoice uses PB- prefix; list filters by invoice_type, party_id, and date range work; DELETE by admin verified via 404 on subsequent GET. No modifications to seeded data; all test rows are TEST_-prefixed and cleaned up via class teardowns.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/customers/quick", "issue": "quick_add_party auto-fills pan='NA' and aadhar='NA' when not supplied. Because _find_customer_duplicate treats these values as unique fields, any 2nd quick-add without explicit PAN/Aadhar will 409 on PAN=NA/Aadhar=NA against any earlier customer that was also created via quick-add (or seeded with NA). Consider skipping literal 'NA' values from the duplicate scan, or store them as null/empty."},
+      {"endpoint": "POST /api/invoices duplicate check", "issue": "Duplicate rule uses only (party_id, date, invoice_type) with status!=cancelled. Cannot record two legitimate invoices to the same customer on the same date (common for retail). Comment in code says 'guard rail'; consider soft-warn instead of hard 409, or include total_amount/items hash in key."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_accounts_phase2.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "(Optional, minor) In backend/server.py::_find_customer_duplicate, ignore sentinel values like 'NA'/'N/A' for pan & aadhar so quick-add of subsequent parties without KYC does not falsely 409.",
+    "(Optional, minor) Revisit invoice duplicate check — either soft-warn or key on (party_id, date, invoice_type, invoice_no missing) so genuine same-day repeat invoices are not blocked."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 2563 lines — well above the 700-line guideline. Recommend splitting into routers (customers, items, invoices, hr, tenders, accounting) and a shared models module.",
+    "All new list endpoints correctly project out MongoDB _id — good.",
+    "_recalc_invoice rounds line-level tax to 2 decimals but sums a possibly un-rounded subtotal; acceptable for GST demo but be aware for financial reconciliation.",
+    "Invoice date is a plain 'YYYY-MM-DD' string with no server-side validation — accepts any string. Consider datetime parsing or a Pydantic validator.",
+    "PATCH /api/items uses the full ItemInput (all fields with defaults) so partial updates zero-out unspecified fields (e.g., sale_price defaults to 0.0). This is 'PATCH' by name but PUT in semantics. Confirm frontend always sends the full item payload, or switch handler to accept a partial dict via exclude_unset."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_accounts_phase2.py (created)",
+    "/app/test_reports/pytest/phase2_results.xml (generated)",
+    "/app/test_reports/iteration_2.json (this)"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "not tested this iteration (per request)"},
+  "seed_data_creation": "Test-only rows are prefixed TEST_<RUN>_ where RUN is a random uuid slice. Class teardowns delete every customer/item/invoice created by the test. No modification to seeded admin/manager/employee accounts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New Phase-2 suite lives at /app/backend/tests/test_accounts_phase2.py and can be rerun standalone: `pytest backend/tests/test_accounts_phase2.py -v --junitxml=test_reports/pytest/phase2_results.xml`. Uses internal http://localhost:8001. The older suite at /app/backend/tests/backend_test.py still points to the public URL and covers pre-Phase-2 flows. Admin login: admin@triveni.com / Admin@123. The `_find_customer_duplicate` NA-sentinel quirk (see backend_issues.minor) may bite manual testers who quick-add two parties without PAN/Aadhar — pass explicit unique dummy PAN/Aadhar when creating additional test customers via /customers/quick.",
+  "rca_of_issue": "N/A — all Phase-2 endpoints behave as specified in the review request."
+}

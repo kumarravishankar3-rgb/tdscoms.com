@@ -51,7 +51,10 @@ export default function BusinessScreen() {
       (c.mobile || '').toLowerCase().includes(s) ||
       (c.whatsapp || '').toLowerCase().includes(s) ||
       (c.pan || '').toLowerCase().includes(s) ||
+      (c.aadhar || '').toLowerCase().includes(s) ||
+      (c.email || '').toLowerCase().includes(s) ||
       (c.customer_code || '').toLowerCase().includes(s) ||
+      (c.contractor_reg_no || '').toLowerCase().includes(s) ||
       (c.gst_no || '').toLowerCase().includes(s)
     );
   }, [customers, q]);
@@ -90,7 +93,7 @@ export default function BusinessScreen() {
           testID="search-input"
           value={q}
           onChangeText={setQ}
-          placeholder={seg === 'customers' ? 'Search name, mobile, PAN, ID…' : 'Search title or party…'}
+          placeholder={seg === 'customers' ? 'Search by ID / Mobile / PAN / Aadhar / Email / GST / Reg No…' : 'Search title or party…'}
           placeholderTextColor={colors.muted}
           style={styles.searchInput}
         />

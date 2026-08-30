@@ -101,3 +101,151 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+user_problem_statement: |
+  Vyapar-style Accounts Module: Complete menu structure (My Business/Reports/Bank/Settings tabs),
+  Sale Invoice form with Credit/Cash toggle, Payment Terms, Customer field (mandatory), Add Items with barcode scanner,
+  and multi-field Customer Search + Duplicate Prevention (block duplicate customer entries by mobile/PAN/Aadhar/GST/email,
+  block duplicate invoices for same party+date). Inline "New Party" / "New Item" adds in voucher screens.
+
+backend:
+  - task: "Customer multi-field search API"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "GET /api/customers/search?q= searches name/customer_code/mobile/whatsapp/PAN/Aadhar/email/GST/reg_no via regex."
+
+  - task: "Duplicate customer detection on POST /customers and POST /customers/quick"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Blocks creation with 409 if mobile/whatsapp/PAN/Aadhar/GST/email/reg_no already exists. Returns existing customer summary."
+
+  - task: "Item catalog CRUD (/api/items) with duplicate check"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "GET (with q= search) / POST / PATCH / DELETE. Case-insensitive name uniqueness."
+
+  - task: "Invoice CRUD (/api/invoices) with GST calc + duplicate invoice check"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Auto invoice_no (SI-000x / PB-000x). Duplicate check on party_id+date+type. GST calc on server. Sale invoices auto-create linked Income entry via /api/income."
+
+  - task: "PUT /customers duplicate guard"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Update also runs _find_customer_duplicate excluding current id."
+
+frontend:
+  - task: "Vyapar-style Accounts Menu (/accounting/menu)"
+    implemented: true
+    working: true
+    file: "frontend/app/accounting/menu.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Four tabs (My Business / Reports / Bank / Settings). Accordion sections with icons. Bank tab shows card view with balance color + share. Report tab has star favourites persisted in SecureStore."
+
+  - task: "Sale Invoice form (/accounting/invoices/new)"
+    implemented: true
+    working: true
+    file: "frontend/app/accounting/invoices/new.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Credit/Cash toggle, Invoice No preview, Date/Payment Terms/Due On grid, Customer mandatory field with search, Add Items line editor, Total bar bottom + Save & New / Save buttons."
+
+  - task: "CustomerSearchModal reusable component"
+    implemented: true
+    working: true
+    file: "frontend/src/CustomerSearchModal.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Multi-field debounced search via /api/customers/search, inline Add New Party sheet with duplicate error surfacing."
+
+  - task: "ItemSearchModal reusable component"
+    implemented: true
+    working: true
+    file: "frontend/src/ItemSearchModal.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Search /api/items with debounce, barcode icon placeholder (alerts on web), inline Add New Item sheet with Product/Service toggle."
+
+  - task: "Business tab search extended to include Aadhar/Email/Reg No"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/business.tsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Filter now covers name/mobile/whatsapp/pan/aadhar/email/customer_code/contractor_reg_no/gst_no. Placeholder updated accordingly."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Customer multi-field search API"
+    - "Duplicate customer detection on POST /customers and POST /customers/quick"
+    - "Item catalog CRUD (/api/items) with duplicate check"
+    - "Invoice CRUD (/api/invoices) with GST calc + duplicate invoice check"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Implemented Phase 2 of Accounts module: Vyapar-style menu (4 tabs), Sale Invoice form matching the reference image, CustomerSearchModal + ItemSearchModal reusable components, backend endpoints for /api/customers/search, /api/customers/quick, /api/items, /api/invoices with duplicate detection at customer, item, and invoice level. Verified via curl: SI-0001 created with correct GST 18% (₹2500→₹2950), second invoice for same party+date returned 409 with existing invoice info. Please run backend tests for high-priority tasks in test_plan. Admin: admin@triveni.com / Admin@123.

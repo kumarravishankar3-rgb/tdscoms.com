@@ -1,0 +1,32 @@
+{
+  "summary": "All voucher attachment endpoints (invoices, expenses, income) verified end-to-end against the public preview backend. 9/9 pytest cases passed: single & multi-file uploads, GET persistence, deletion via ?path=, 10 MB size cap enforcement, and 404 on invalid ids for both POST and DELETE. Attachment records include the expected keys {path, name, size, content_type, uploaded_at, uploaded_by}. No backend fixes required.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_voucher_attachments.py",
+    "/app/test_reports/pytest/iteration_3_voucher_attachments.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Attachment upload path uses `run_in_threadpool(put_object, ...)` which is good; storage layer not part of this test scope but path is returned in the response so DELETE by exact path works.",
+    "Duplicate-invoice guard rail (same party+date+type) is still honored — test avoided it by using a fresh /customers/quick party per run.",
+    "10 MB cap is checked after reading the entire body into memory (`await file.read()`); for very large uploads this could OOM the worker. Consider streaming/size guard on Content-Length header before reading. Not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_voucher_attachments.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (out of scope)"},
+  "seed_data_creation": "Each run creates one fresh customer via /api/customers/quick (random mobile + name prefixed TEST_AttachParty_), one sale invoice for today, one expense (Office/1500/cash), and one income (Consulting/2500/cash). Attachments uploaded during tests get removed via the DELETE endpoint under test, though the underlying storage objects and voucher rows remain (acceptable — they are prefixed TEST_ where applicable).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Voucher attachments (POST/DELETE + 10 MB cap + 404s) are green. Test file at /app/backend/tests/test_voucher_attachments.py can be reused; override BASE_URL via TEST_BASE_URL env var if needed. Not covered here (already covered in earlier iterations): auth, base invoice/expense/income CRUD beyond attachments, and the storage backend (`put_object`) itself.",
+  "rca_of_issue": "N/A — no issues found."
+}

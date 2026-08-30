@@ -6,6 +6,7 @@ import { ScreenHeader } from '@/src/ScreenHeader';
 import { FormInput, OptionRow } from '@/src/forms';
 import { PrimaryButton } from '@/src/ui';
 import { api } from '@/src/api';
+import { AttachmentsSection, Attachment } from '@/src/AttachmentsSection';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -23,6 +24,7 @@ export default function NewIncome() {
     payment_mode: 'cash', bank_account_id: '',
     employee_id: '', employee_name: '', remarks: '',
   });
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const set = (k: string) => (v: string) => setF(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export default function NewIncome() {
     if (!f.service_category) { setErr('Service category required'); return; }
     setErr(null); setBusy(true);
     try {
-      await api.post('/income', {
+      const created: any = await api.post('/income', {
         date: f.date,
         client_id: f.client_id || null,
         client_name: f.client_name.trim(),
@@ -55,6 +57,11 @@ export default function NewIncome() {
         employee_name: f.employee_name || null,
         remarks: f.remarks || null,
       });
+      for (const a of attachments) {
+        if (a.pending && a.uri) {
+          try { await api.uploadVoucherFile('income', created.id, { uri: a.uri, name: a.name, type: a.type || 'application/octet-stream' }); } catch {}
+        }
+      }
       router.back();
     } catch (e: any) { setErr(e?.message || 'Failed'); } finally { setBusy(false); }
   };
@@ -117,6 +124,7 @@ export default function NewIncome() {
             </View>
           )}
           <FormInput label="Remarks" value={f.remarks} onChangeText={set('remarks')} multiline testID="in-remarks" />
+          <AttachmentsSection attachments={attachments} onChange={setAttachments} title="Receipt / Proof Attachments" hint="Receipt / bank slip / photos • Max 10 MB per file" />
           {err ? <Text style={{ color: colors.error, textAlign: 'center' }}>{err}</Text> : null}
           <PrimaryButton label="Save Income" onPress={save} loading={busy} testID="save-btn" />
         </ScrollView>

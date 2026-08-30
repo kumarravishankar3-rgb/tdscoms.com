@@ -515,6 +515,7 @@ class Income(BaseModel):
     employee_id: Optional[str] = None
     employee_name: Optional[str] = None
     remarks: Optional[str] = None
+    attachments: List[dict] = Field(default_factory=list)
     created_by: Optional[str] = None
     created_by_name: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
@@ -548,6 +549,7 @@ class Expense(BaseModel):
     status: str = "pending"  # pending, verified, approved, rejected
     verified_by: Optional[str] = None
     approved_by: Optional[str] = None
+    attachments: List[dict] = Field(default_factory=list)
     created_by: Optional[str] = None
     created_by_name: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
@@ -631,6 +633,7 @@ class Invoice(BaseModel):
     balance: float = 0.0
     status: str = "unpaid"  # unpaid | partial | paid | cancelled
     notes: Optional[str] = None
+    attachments: List[dict] = Field(default_factory=list)
     created_by: Optional[str] = None
     created_by_name: Optional[str] = None
     created_at: datetime = Field(default_factory=now_utc)
@@ -1856,6 +1859,87 @@ async def get_invoice(iid: str, current: User = Depends(get_current_user)):
 async def delete_invoice(iid: str, current: User = Depends(require_admin_or_manager)):
     res = await db.invoices.delete_one({"id": iid})
     return {"deleted": res.deleted_count}
+
+
+# ============ Voucher Attachments (generic: invoices / expenses / incomes) ============
+VOUCHER_MAX_BYTES = 10 * 1024 * 1024  # 10 MB per file
+_VOUCHER_COLLECTIONS = {"invoices": "invoices", "expenses": "expenses", "incomes": "income"}
+
+
+async def _voucher_attach(kind: str, oid: str, file: UploadFile, current: User):
+    if kind not in _VOUCHER_COLLECTIONS:
+        raise HTTPException(status_code=400, detail="Invalid voucher kind")
+    coll_name = _VOUCHER_COLLECTIONS[kind]
+    coll = getattr(db, coll_name)
+    doc = await coll.find_one({"id": oid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"{kind[:-1].title()} not found")
+    data = await file.read()
+    if len(data) > VOUCHER_MAX_BYTES:
+        raise HTTPException(status_code=400, detail=f"File exceeds 10 MB limit ({len(data)//1024} KB)")
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    ext = ext if len(ext) <= 8 else "bin"
+    path = f"{APP_NAME}/uploads/{current.user_id}/{uuid.uuid4().hex}.{ext}"
+    ct = file.content_type or "application/octet-stream"
+    await run_in_threadpool(put_object, path, data, ct)
+    attachment = {
+        "path": path,
+        "name": file.filename or f"file.{ext}",
+        "size": len(data),
+        "content_type": ct,
+        "uploaded_at": now_utc().isoformat(),
+        "uploaded_by": current.user_id,
+    }
+    await coll.update_one({"id": oid}, {"$push": {"attachments": attachment}})
+    updated = await coll.find_one({"id": oid}, {"_id": 0})
+    return updated
+
+
+async def _voucher_detach(kind: str, oid: str, path: str):
+    if kind not in _VOUCHER_COLLECTIONS:
+        raise HTTPException(status_code=400, detail="Invalid voucher kind")
+    coll = getattr(db, _VOUCHER_COLLECTIONS[kind])
+    doc = await coll.find_one({"id": oid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"{kind[:-1].title()} not found")
+    await coll.update_one({"id": oid}, {"$pull": {"attachments": {"path": path}}})
+    return await coll.find_one({"id": oid}, {"_id": 0})
+
+
+@api_router.post("/invoices/{iid}/attachments", response_model=Invoice)
+async def upload_invoice_file(iid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    d = await _voucher_attach("invoices", iid, file, current)
+    return Invoice(**d)
+
+
+@api_router.delete("/invoices/{iid}/attachments", response_model=Invoice)
+async def delete_invoice_attachment(iid: str, path: str, current: User = Depends(get_current_user)):
+    d = await _voucher_detach("invoices", iid, path)
+    return Invoice(**d)
+
+
+@api_router.post("/expenses/{eid}/attachments", response_model=Expense)
+async def upload_expense_file(eid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    d = await _voucher_attach("expenses", eid, file, current)
+    return Expense(**d)
+
+
+@api_router.delete("/expenses/{eid}/attachments", response_model=Expense)
+async def delete_expense_attachment(eid: str, path: str, current: User = Depends(get_current_user)):
+    d = await _voucher_detach("expenses", eid, path)
+    return Expense(**d)
+
+
+@api_router.post("/income/{iid}/attachments", response_model=Income)
+async def upload_income_file(iid: str, file: UploadFile = File(...), current: User = Depends(get_current_user)):
+    d = await _voucher_attach("incomes", iid, file, current)
+    return Income(**d)
+
+
+@api_router.delete("/income/{iid}/attachments", response_model=Income)
+async def delete_income_attachment(iid: str, path: str, current: User = Depends(get_current_user)):
+    d = await _voucher_detach("incomes", iid, path)
+    return Income(**d)
 
 
 # ============ Accounting: Dashboard, Cash & Bank Book, Ledgers ============

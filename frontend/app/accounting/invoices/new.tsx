@@ -7,6 +7,7 @@ import { colors, spacing, radius, font } from '@/src/theme';
 import { api } from '@/src/api';
 import { CustomerSearchModal, PickedParty } from '@/src/CustomerSearchModal';
 import { ItemSearchModal, PickedItem } from '@/src/ItemSearchModal';
+import { AttachmentsSection, Attachment } from '@/src/AttachmentsSection';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (d: string, days: number) => { const t = new Date(d); t.setDate(t.getDate() + days); return t.toISOString().slice(0, 10); };
@@ -41,6 +42,7 @@ export default function NewInvoice() {
   const [showItemPick, setShowItemPick] = useState(false);
 
   const [notes, setNotes] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [invoiceNo, setInvoiceNo] = useState<string>('AUTO'); // just display
   const [busy, setBusy] = useState(false);
 
@@ -112,6 +114,15 @@ export default function NewInvoice() {
         notes: notes || null,
       };
       const inv: any = await api.post('/invoices', body);
+      // Upload queued attachments (best-effort)
+      let attachErrors = 0;
+      for (const a of attachments) {
+        if (a.pending && a.uri) {
+          try {
+            await api.uploadVoucherFile('invoices', inv.id, { uri: a.uri, name: a.name, type: a.type || 'application/octet-stream' });
+          } catch { attachErrors++; }
+        }
+      }
       // Also create an Income record so it flows into dashboard/reports when it's a Sale
       if (!isPurchase && totals.total > 0) {
         try {
@@ -123,11 +134,12 @@ export default function NewInvoice() {
           });
         } catch {}
       }
+      const suffix = attachErrors ? ` (${attachErrors} attachment upload failed)` : '';
       if (andNew) {
-        setParty(null); setItems([]); setNotes(''); setPaymentType('credit'); setDate(today()); setTerms('Net 60 days');
-        Alert.alert('Saved', `${inv.invoice_no} saved successfully`);
+        setParty(null); setItems([]); setNotes(''); setAttachments([]); setPaymentType('credit'); setDate(today()); setTerms('Net 60 days');
+        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}`);
       } else {
-        Alert.alert('Saved', `${inv.invoice_no} saved successfully`, [{ text: 'OK', onPress: () => router.back() }]);
+        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}`, [{ text: 'View', onPress: () => router.replace(`/accounting/invoices/${inv.id}` as any) }, { text: 'OK', onPress: () => router.back() }]);
       }
     } catch (e: any) {
       const msg = String(e?.message || 'Failed');
@@ -229,6 +241,9 @@ export default function NewInvoice() {
               </View>
             ))
           )}
+
+          {/* Attachments */}
+          <AttachmentsSection attachments={attachments} onChange={setAttachments} title="Attachments" hint="Bills, PO, POD, GST notes • Max 10 MB per file" />
 
           {/* Notes */}
           <View style={styles.notesWrap}>

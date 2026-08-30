@@ -105,6 +105,41 @@ export const api = {
     if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
     return data;
   },
+  // Generic voucher attachment upload. kind: 'invoices' | 'expenses' | 'income'
+  uploadVoucherFile: async (kind: 'invoices' | 'expenses' | 'income', oid: string, file: { uri: string; name: string; type: string }) => {
+    const token = await tokenStore.get();
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(file.uri)).blob();
+      form.append('file', blob, file.name);
+    } else {
+      form.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
+    }
+    const res = await fetch(`${BASE}/api/${kind}/${oid}/attachments`, {
+      method: 'POST',
+      body: form as any,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) {
+      const detail = data && data.detail;
+      const msg = typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : `Upload failed (${res.status})`;
+      throw new Error(msg);
+    }
+    return data;
+  },
+  deleteVoucherFile: async (kind: 'invoices' | 'expenses' | 'income', oid: string, path: string) => {
+    const token = await tokenStore.get();
+    const res = await fetch(`${BASE}/api/${kind}/${oid}/attachments?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error((data && data.detail) || `Delete failed (${res.status})`);
+    return data;
+  },
   uploadEmployeePhoto: async (eid: string, file: { uri: string; name: string; type: string }) => {
     const token = await tokenStore.get();
     const form = new FormData();

@@ -72,3 +72,24 @@ See `/app/memory/test_credentials.md`.
 
 ### Backend tests
 - 27/27 pytest cases green in `test_reports/iteration_2.json`
+
+---
+
+## Voucher Attachments — DONE 2026-08-30
+
+### Backend
+- `Invoice`, `Expense`, `Income` models now carry `attachments: List[dict]`
+- Endpoints: `POST/DELETE /api/invoices/{iid}/attachments`, `POST/DELETE /api/expenses/{eid}/attachments`, `POST/DELETE /api/income/{iid}/attachments`
+- Uses Emergent Object Storage. 10 MB per-file cap enforced (HTTP 400 on excess). Any file type accepted.
+- Metadata stored: `path, name, size, content_type, uploaded_at, uploaded_by`
+- 9/9 pytest cases green in `test_reports/iteration_3.json`
+
+### Frontend
+- Reusable `AttachmentsSection` component (`src/AttachmentsSection.tsx`) — supports two modes:
+  1. Draft (new voucher): queue files locally, upload after save
+  2. Existing voucher: immediate upload/delete against the server
+- File-type-aware icons (PDF red, Image purple, Excel green, others blue)
+- Integrated in: Sale Invoice / Purchase Bill new form, Expense new form, Payment-In (Income) new form
+- New Invoice detail view (`/accounting/invoices/[id]`) shows attachments with add/delete
+- New Invoice list view (`/accounting/invoices?type=sale|purchase`) shows attachment-count chip
+- Menu updated with "All Sale Invoices" and "All Purchase Bills" list entries

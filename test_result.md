@@ -249,3 +249,69 @@ agent_communication:
   - agent: "main"
     message: |
       Implemented Phase 2 of Accounts module: Vyapar-style menu (4 tabs), Sale Invoice form matching the reference image, CustomerSearchModal + ItemSearchModal reusable components, backend endpoints for /api/customers/search, /api/customers/quick, /api/items, /api/invoices with duplicate detection at customer, item, and invoice level. Verified via curl: SI-0001 created with correct GST 18% (₹2500→₹2950), second invoice for same party+date returned 409 with existing invoice info. Please run backend tests for high-priority tasks in test_plan. Admin: admin@triveni.com / Admin@123.
+
+# --- 2026-08-30 attachments iteration ---
+
+backend_new_tasks:
+  - task: "Attachments field on Invoice / Expense / Income models"
+    file: "backend/server.py"
+    working: true
+    priority: "high"
+    needs_retesting: true
+    notes: "Attachments: List[dict] added on Invoice, Expense, Income models. Default empty list."
+
+  - task: "POST /api/invoices/{iid}/attachments + DELETE"
+    file: "backend/server.py"
+    working: true
+    priority: "high"
+    needs_retesting: true
+    notes: "Emergent object storage, 10 MB per-file cap, returns updated Invoice with attachments list. Delete via ?path=<encoded>."
+
+  - task: "POST /api/expenses/{eid}/attachments + DELETE"
+    file: "backend/server.py"
+    working: true
+    priority: "high"
+    needs_retesting: true
+
+  - task: "POST /api/income/{iid}/attachments + DELETE"
+    file: "backend/server.py"
+    working: true
+    priority: "high"
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "AttachmentsSection reusable component (draft + server modes)"
+    file: "frontend/src/AttachmentsSection.tsx"
+    working: true
+    priority: "high"
+    needs_retesting: false
+
+  - task: "Sale/Purchase Invoice new form supports multiple attachments (queue-then-upload after save)"
+    file: "frontend/app/accounting/invoices/new.tsx"
+    working: true
+    priority: "high"
+    needs_retesting: false
+
+  - task: "Expense new form supports multiple attachments"
+    file: "frontend/app/accounting/expenses/new.tsx"
+    working: true
+    priority: "high"
+    needs_retesting: false
+
+  - task: "Income (Payment-In) new form supports multiple attachments"
+    file: "frontend/app/accounting/income/new.tsx"
+    working: true
+    priority: "high"
+    needs_retesting: false
+
+  - task: "Invoice detail view (/accounting/invoices/[id]) with attachments + delete"
+    file: "frontend/app/accounting/invoices/[id].tsx"
+    working: true
+    priority: "high"
+    needs_retesting: false
+
+  - task: "Invoice list view (/accounting/invoices) with attachments-count chip"
+    file: "frontend/app/accounting/invoices/index.tsx"
+    working: true
+    priority: "medium"
+    needs_retesting: false

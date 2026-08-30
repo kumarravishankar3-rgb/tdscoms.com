@@ -6,6 +6,7 @@ import { ScreenHeader } from '@/src/ScreenHeader';
 import { FormInput, OptionRow } from '@/src/forms';
 import { PrimaryButton } from '@/src/ui';
 import { api } from '@/src/api';
+import { AttachmentsSection, Attachment } from '@/src/AttachmentsSection';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -16,6 +17,7 @@ export default function NewExpense() {
   const [meta, setMeta] = useState<any>({ expense_categories: [], payment_modes: ['cash', 'bank', 'upi', 'cheque'] });
   const [banks, setBanks] = useState<any[]>([]);
   const [f, setF] = useState({ date: today(), category: '', amount: '', payment_mode: 'cash', bank_account_id: '', vendor: '', description: '' });
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const set = (k: string) => (v: string) => setF(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -34,12 +36,18 @@ export default function NewExpense() {
     if (!f.category) { setErr('Category required'); return; }
     setErr(null); setBusy(true);
     try {
-      await api.post('/expenses', {
+      const created: any = await api.post('/expenses', {
         date: f.date, category: f.category, amount: amt,
         payment_mode: f.payment_mode,
         bank_account_id: f.payment_mode !== 'cash' ? (f.bank_account_id || null) : null,
         vendor: f.vendor || null, description: f.description || null,
       });
+      // Upload queued attachments (best-effort)
+      for (const a of attachments) {
+        if (a.pending && a.uri) {
+          try { await api.uploadVoucherFile('expenses', created.id, { uri: a.uri, name: a.name, type: a.type || 'application/octet-stream' }); } catch {}
+        }
+      }
       router.back();
     } catch (e: any) { setErr(e?.message || 'Failed'); } finally { setBusy(false); }
   };
@@ -76,6 +84,7 @@ export default function NewExpense() {
           ) : null}
           <FormInput label="Vendor / Paid To" value={f.vendor} onChangeText={set('vendor')} testID="in-vendor" />
           <FormInput label="Description" value={f.description} onChangeText={set('description')} multiline testID="in-desc" />
+          <AttachmentsSection attachments={attachments} onChange={setAttachments} title="Bill / Receipt Attachments" hint="Bill/receipt/photos • Max 10 MB per file" />
           {err ? <Text style={{ color: colors.error, textAlign: 'center' }}>{err}</Text> : null}
           <Text style={{ color: colors.muted, fontSize: font.sm, textAlign: 'center' }}>Expense will be marked as Pending. Accounts/Admin can verify & approve later.</Text>
           <PrimaryButton label="Save Expense" onPress={save} loading={busy} testID="save-btn" />

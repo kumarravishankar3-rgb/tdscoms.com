@@ -7,6 +7,7 @@ import { api } from '@/src/api';
 import { ScreenHeader } from '@/src/ScreenHeader';
 import { AttachmentsSection, Attachment } from '@/src/AttachmentsSection';
 import { useAuth } from '@/src/AuthContext';
+import { confirm, notify } from '@/src/dialog';
 
 const inr = (n: any) => `₹ ${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -27,13 +28,15 @@ export default function InvoiceDetail() {
       const url = await api.invoicePdfUrl(inv.id);
       if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
       else await Linking.openURL(url);
-    } catch (e: any) { Alert.alert('Failed', e?.message || 'Unable to open PDF'); }
+    } catch (e: any) { notify('Failed', e?.message || 'Unable to open PDF'); }
   };
   const edit = () => router.push({ pathname: '/accounting/invoices/new', params: { edit_id: inv.id, type: inv.invoice_type } } as any);
-  const remove = () => Alert.alert('Delete Invoice?', `Delete ${inv.invoice_no}? This cannot be undone.`, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: async () => { try { await api.del(`/invoices/${id}`); router.back(); } catch (e: any) { Alert.alert('Failed', e?.message || 'Try again'); } } },
-  ]);
+  const remove = async () => {
+    const ok = await confirm('Delete Invoice?', `Delete ${inv.invoice_no}? This cannot be undone.`, { confirmText: 'Delete', destructive: true });
+    if (!ok) return;
+    try { await api.del(`/invoices/${id}`); router.back(); }
+    catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+  };
 
   if (!inv) return (
     <View style={{ flex: 1, backgroundColor: '#F4F6FB' }}>

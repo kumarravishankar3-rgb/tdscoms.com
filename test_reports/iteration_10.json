@@ -1,0 +1,22 @@
+{
+  "summary": "Iteration 10 retest — Sale Invoice role permissions + web dialog polish. ALL 3 SCOPE ITEMS PASS. (1) Admin list on inv_f44f20f2ac07 shows print/edit/del (count=1/1/1); admin detail shows print-hdr/edit-hdr/del-hdr (count=1/1/1). (2) Employee on the same invoice: list print=1, edit=0, del=0; detail print-hdr=1, edit-hdr=0, del-hdr=0 — role gating fully intact. (3) NEW web dialog polish confirmed working: tapping admin del-hdr now fires a native browser confirm — page.on('dialog') captured type='confirm' with message 'Delete Invoice?\\n\\nDelete SI-0029? This cannot be undone.' (contains both required substrings 'Delete Invoice?' and invoice number 'SI-0029'). Dismissed via dialog.dismiss() → invoice still present in list (inv-inv_f44f20f2ac07 count=1 post-dismiss, no deletion). No React-Native red screen, no console errors. Both regressions (role visibility) and the new polish fix (window.confirm on rn-web via /app/frontend/src/dialog.ts) are verified. Nothing to fix; ship it.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/tmp/iter10_pass.png"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/frontend/src/dialog.ts cleanly wraps Alert.alert with a Platform.OS==='web' fallback to window.confirm / window.alert. Both invoices/index.tsx and invoices/[id].tsx now import { confirm, notify } and await the async confirm() — good pattern, worth reusing for other Alert.alert call sites across the codebase (e.g. new.tsx save handler still uses Alert.alert per iteration_9)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not in scope)", "frontend": "100% — all 3 scope items pass: admin visibility (list+detail), employee visibility (list+detail), and web confirm dialog fires with correct type/message and dismiss keeps invoice intact."},
+  "seed_data_creation": "None. Admin del-hdr was dismissed; SI-0029 (inv_f44f20f2ac07) preserved.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Web confirm dialog now works via /app/frontend/src/dialog.ts. To capture it in Playwright: register page.on('dialog', handler) BEFORE clicking del-hdr/del-<id>; the dialog.type will be 'confirm' with message format 'Delete Invoice?\\n\\nDelete <invoice_no>? This cannot be undone.'. Use dialog.dismiss() to Cancel or dialog.accept() to actually delete. Same wrapper (notify) uses window.alert on web for PDF/error surfacing — capture via page.on('dialog') where dialog.type=='alert'. Note: navigating to invoice detail via testID='inv-<id>' click does NOT work because the outer View holds the testID while the Pressable inside handles routing; use direct URL navigation to /accounting/invoices/<id> instead.",
+  "rca_of_issue": "N/A — verification only. Polish fix confirmed effective: react-native-web's Alert.alert no-op is now bypassed by /app/frontend/src/dialog.ts which routes to window.confirm/window.alert on Platform.OS==='web'."
+}

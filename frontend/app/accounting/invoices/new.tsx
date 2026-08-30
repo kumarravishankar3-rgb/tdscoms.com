@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Pressable, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { api } from '@/src/api';
 import { CustomerSearchModal, PickedParty } from '@/src/CustomerSearchModal';
 import { ItemSearchModal, PickedItem } from '@/src/ItemSearchModal';
 import { AttachmentsSection, Attachment } from '@/src/AttachmentsSection';
+import { notify } from '@/src/dialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (d: string, days: number) => { const t = new Date(d); t.setDate(t.getDate() + days); return t.toISOString().slice(0, 10); };
@@ -85,7 +86,7 @@ export default function NewInvoice() {
           })));
           setNotes(ex.notes || '');
           setAttachments(ex.attachments || []);
-        } catch (e: any) { Alert.alert('Load failed', String(e?.message || 'Unable to load')); }
+        } catch (e: any) { notify('Load failed', String(e?.message || 'Unable to load')); }
         return;
       }
       try {
@@ -139,9 +140,9 @@ export default function NewInvoice() {
   const duesNum = useMemo(() => Math.max(0, totals.total - paidNum), [totals.total, paidNum]);
 
   const save = async (andNew: boolean) => {
-    if (!party) return Alert.alert('Customer required', 'Please select or add a customer first');
+    if (!party) return notify('Customer required', 'Please select or add a customer first');
     if (items.length === 0 && totals.total === 0) {
-      return Alert.alert('Add at least one item', 'You can add items or enter a total-only invoice');
+      return notify('Add at least one item', 'You can add items or enter a total-only invoice');
     }
     setBusy(true);
     try {
@@ -193,14 +194,15 @@ export default function NewInvoice() {
       }
       if (andNew) {
         setParty(null); setItems([]); setNotes(''); setAttachments([]); setPaymentType('credit'); setDate(today()); setTerms('Net 60 days');
-        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}${autoHint}`);
+        notify('Saved', `${inv.invoice_no} saved successfully${suffix}${autoHint}`);
       } else {
-        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}${autoHint}`, [{ text: 'View', onPress: () => router.replace(`/accounting/invoices/${inv.id}` as any) }, { text: 'OK', onPress: () => router.back() }]);
+        notify('Saved', `${inv.invoice_no} saved successfully${suffix}${autoHint}`);
+        router.replace(`/accounting/invoices/${inv.id}` as any);
       }
     } catch (e: any) {
       const msg = String(e?.message || 'Failed');
-      if (msg.includes('already exists')) Alert.alert('Duplicate Invoice', 'This party already has an invoice on this date. To prevent duplicate billing, only one invoice per party per date is allowed.');
-      else Alert.alert('Failed', msg);
+      if (msg.includes('already exists')) notify('Duplicate Invoice', 'This party already has an invoice on this date. To prevent duplicate billing, only one invoice per party per date is allowed.');
+      else notify('Failed', msg);
     } finally { setBusy(false); }
   };
 

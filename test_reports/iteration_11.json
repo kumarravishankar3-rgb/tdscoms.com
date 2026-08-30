@@ -1,0 +1,20 @@
+{
+  "summary": "Iter-11 smoke test — Sale Invoice save flow with notify() cross-platform alert. PASSED end-to-end. Logged in as admin, created party 'Iter11 Party' (9899987651), created item 'Iter11 Item' @ ₹750 GST 18%. Bottom bar showed Total ₹ 885.00 (Credit default). Tapped save-btn; window.alert dialog fired: 'Saved\\n\\nSI-0042 saved successfully\\n\\n✅ 2 tasks auto-created (Service + Follow-up). Check Tasks tab.'. App auto-navigated to /accounting/invoices/inv_5b5362f87e19 showing SI-0042 UNPAID / ₹885. Verified in list view under /accounting/invoices — new SI row visible with correct total/status. No red screen, zero console errors, zero page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_11.json"],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created 1 party (Iter11 Party / 9899987651), 1 item (Iter11 Item ₹750 GST 18%), 1 sale invoice SI-0042 (UNPAID, ₹885, Credit/Cash mode).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "notify() (Alert.alert replacement) works correctly on web preview — it triggers window.alert which is captured via page.on('dialog'). Sale Invoice save flow is confirmed working end-to-end on web. Party mobile testID is 'ap-mob' (not 'ap-mobile'). Save success dialog format: 'Saved\\n\\nSI-XXXX saved successfully\\n\\n✅ 2 tasks auto-created...'. Post-save the app navigates to /accounting/invoices/<id>.",
+  "rca_of_issue": "N/A — smoke test passed."
+}

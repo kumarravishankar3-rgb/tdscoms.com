@@ -93,3 +93,30 @@ See `/app/memory/test_credentials.md`.
 - New Invoice detail view (`/accounting/invoices/[id]`) shows attachments with add/delete
 - New Invoice list view (`/accounting/invoices?type=sale|purchase`) shows attachment-count chip
 - Menu updated with "All Sale Invoices" and "All Purchase Bills" list entries
+
+---
+
+## Task Customer Details + Auto-Tasks on Sale Voucher — DONE 2026-08-30
+
+### Task Customer Details block
+- `Task` / `TaskInput` / `TaskUpdate` now carry: `customer_id, customer_code, customer_name, customer_mobile, customer_pan, customer_address`
+- `/tasks/new` shows a **Customer Details** card with **Search** button opening `CustomerSearchModal` (multi-field: ID/Name/Mobile/PAN/Aadhar/EPFO/GST/Reg No) with inline "New Party" support and duplicate blocking
+- `/tasks/[id]` shows the saved customer details block (ID / Name / Mobile / PAN / Address)
+
+### Auto-created tasks on Sale Voucher save
+- Every sale invoice save triggers 2 tasks (best-effort, invoice not blocked on failure):
+  1. **Service Task** — priority `high`, deadline = invoice_date + `default_deadline_days`
+  2. **Follow-up Task** — priority `high` (medium if paid), deadline = invoice_date + `default_followup_days`
+- Both tasks carry: customer_id/code/name/mobile/PAN/address, voucher_no, voucher_date, total_amount, paid_amount, dues_amount, assignee (from service setting)
+
+### Admin Service-wise Task Assignment
+- Screen: `/accounting/settings/service-tasks` (wired in Vyapar Settings tab under "Automation")
+- Global toggle: **Auto-create Tasks on Sale Voucher** (ON by default)
+- Per-service settings: default employee picker, service deadline days, follow-up deadline days, per-service auto toggle
+- Backend endpoints: `GET/POST/PATCH/DELETE /api/settings/service-tasks`, `GET/PUT /api/settings/auto-task-toggle`
+- 5 defaults auto-seeded: DSC, GST, Tender, Income Tax, Registration Service
+- Service matching: first line item name (case-insensitive slug) → service_key. Fallback → first setting.
+
+### Testing
+- iteration_5: 17 pytest cases → 16 green, 1 minor UX defect (label-only POST needed service_key)
+- iteration_6: fix applied (`Optional[str]=None`), rerun **17/17 green**

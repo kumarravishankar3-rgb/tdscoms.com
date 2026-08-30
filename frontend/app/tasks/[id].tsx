@@ -132,7 +132,26 @@ export default function TaskDetail() {
               <View style={styles.amount}><Text style={styles.amountLbl}>Dues</Text><Text style={[styles.amountVal, { color: (t.dues_amount || 0) > 0 ? colors.error : colors.success }]}>₹ {Number(t.dues_amount || 0).toLocaleString('en-IN')}</Text></View>
             </View>
           ) : null}
+          {t.voucher_no ? (
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 }}>
+              <Ionicons name="receipt" size={14} color={colors.muted} />
+              <Text style={styles.metaText}>{t.voucher_no}{t.voucher_date ? ` • ${t.voucher_date}` : ''}</Text>
+            </View>
+          ) : null}
         </Card>
+
+        {t.customer_id || t.customer_name ? (
+          <Card>
+            <Text style={styles.sectionTitle}>Customer Details</Text>
+            <View style={{ gap: 4, marginTop: 6 }}>
+              <View style={styles.custRow}><Text style={styles.custLbl}>Customer ID</Text><Text style={styles.custVal}>{t.customer_code || '—'}</Text></View>
+              <View style={styles.custRow}><Text style={styles.custLbl}>Name</Text><Text style={styles.custVal}>{t.customer_name || '—'}</Text></View>
+              <View style={styles.custRow}><Text style={styles.custLbl}>Mobile</Text><Text style={styles.custVal}>{t.customer_mobile || '—'}</Text></View>
+              <View style={styles.custRow}><Text style={styles.custLbl}>PAN</Text><Text style={styles.custVal}>{t.customer_pan || '—'}</Text></View>
+              <View style={styles.custRow}><Text style={styles.custLbl}>Address</Text><Text style={[styles.custVal, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{t.customer_address || '—'}</Text></View>
+            </View>
+          </Card>
+        ) : null}
 
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -306,6 +325,9 @@ const styles = StyleSheet.create({
   amountLbl: { color: colors.muted, fontSize: font.sm },
   amountVal: { fontWeight: '800', fontSize: font.base, marginTop: 2, color: colors.onSurface },
   sectionTitle: { fontSize: font.lg, fontWeight: '800', color: colors.onSurface },
+  custRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, gap: 12 },
+  custLbl: { color: colors.muted, fontSize: font.sm, fontWeight: '600', width: 90 },
+  custVal: { color: colors.onSurface, fontWeight: '700', flex: 1, textAlign: 'right' },
   smallAdd: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
   smallAddText: { color: colors.onBrandPrimary, fontWeight: '700', fontSize: font.sm },
   emptyStages: { alignItems: 'center', padding: spacing.xl, gap: 6 },

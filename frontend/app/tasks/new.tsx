@@ -7,6 +7,7 @@ import { ScreenHeader } from '@/src/ScreenHeader';
 import { FormInput, OptionRow } from '@/src/forms';
 import { PrimaryButton, SecondaryButton, Chip } from '@/src/ui';
 import { api } from '@/src/api';
+import { CustomerSearchModal, PickedParty } from '@/src/CustomerSearchModal';
 
 type Sub = { id: string; title: string };
 
@@ -36,6 +37,8 @@ export default function NewTask() {
   const [assigneeId, setAssigneeId] = useState<string>('');
   const [assigneeName, setAssigneeName] = useState<string>('');
   const [priority, setPriority] = useState('medium');
+  const [customer, setCustomer] = useState<PickedParty | null>(null);
+  const [showPartyPick, setShowPartyPick] = useState(false);
 
   const reloadTypes = async () => { try { setTypes(await api.get<any[]>('/task-types')); } catch {} };
   useEffect(() => {
@@ -83,6 +86,12 @@ export default function NewTask() {
         deadline: deadline || null,
         assignee_id: assigneeId || null, assignee_name: assigneeName || null,
         priority,
+        customer_id: customer?.id || null,
+        customer_code: customer?.customer_code || null,
+        customer_name: customer?.name || null,
+        customer_mobile: customer?.mobile || null,
+        customer_pan: customer?.pan || null,
+        customer_address: customer?.address || null,
       });
       setOk(`Saved ✓ Task ${created.task_no}`);
       setTimeout(() => router.replace(`/tasks/${created.id}` as any), 600);
@@ -101,6 +110,34 @@ export default function NewTask() {
 
           <FormInput label="Title *" value={title} onChangeText={setTitle} placeholder="e.g. Renew DSC for Rakesh Contractor" testID="in-title" />
           <FormInput label="Description" value={description} onChangeText={setDescription} placeholder="Details" multiline testID="in-desc" />
+
+          <View style={styles.card}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.sectionTitle}>Customer Details</Text>
+              <View style={{ flex: 1 }} />
+              <Pressable testID="pick-cust" onPress={() => setShowPartyPick(true)} style={styles.custPick}>
+                <Ionicons name="search" size={14} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>{customer ? 'Change' : 'Search'}</Text>
+              </Pressable>
+            </View>
+            {customer ? (
+              <View style={{ gap: 4, marginTop: 8 }}>
+                <View style={styles.custRow}><Text style={styles.custLbl}>Customer ID</Text><Text style={styles.custVal}>{customer.customer_code || '—'}</Text></View>
+                <View style={styles.custRow}><Text style={styles.custLbl}>Name</Text><Text style={styles.custVal}>{customer.name}</Text></View>
+                <View style={styles.custRow}><Text style={styles.custLbl}>Mobile</Text><Text style={styles.custVal}>{customer.mobile}</Text></View>
+                <View style={styles.custRow}><Text style={styles.custLbl}>PAN</Text><Text style={styles.custVal}>{customer.pan || '—'}</Text></View>
+                <View style={styles.custRow}><Text style={styles.custLbl}>Address</Text><Text style={[styles.custVal, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{customer.address || '—'}</Text></View>
+                <Pressable onPress={() => setCustomer(null)} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
+                  <Text style={{ color: colors.error, fontWeight: '700', fontSize: 12 }}>Remove customer</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={() => setShowPartyPick(true)} style={styles.custEmpty}>
+                <Ionicons name="person-add-outline" size={22} color={colors.brandPrimary} />
+                <Text style={{ color: colors.muted, marginTop: 4, fontSize: font.sm }}>Search by ID / Name / Mobile / PAN / Aadhar / EPFO / GST / Reg No</Text>
+              </Pressable>
+            )}
+          </View>
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Task Type</Text>
@@ -192,6 +229,7 @@ export default function NewTask() {
           </View>
         </View>
       </Modal>
+      <CustomerSearchModal visible={showPartyPick} onClose={() => setShowPartyPick(false)} onPick={setCustomer} title="Search / Add Customer" />
     </View>
   );
 }
@@ -213,6 +251,11 @@ const styles = StyleSheet.create({
   duesBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md, borderRadius: radius.md, marginTop: spacing.sm },
   assn: { paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   assnActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  custPick: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.brandPrimary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill },
+  custRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, gap: 12 },
+  custLbl: { color: colors.muted, fontSize: font.sm, fontWeight: '600', width: 90 },
+  custVal: { color: colors.onSurface, fontWeight: '700', flex: 1, textAlign: 'right' },
+  custEmpty: { alignItems: 'center', padding: 16, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.surfaceSecondary, marginTop: 8 },
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border },

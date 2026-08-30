@@ -1,0 +1,32 @@
+{
+  "summary": "Re-verified single bug fix from iteration_5 against http://localhost:8001 with admin@triveni.com. (1) The specific review case — POST /api/settings/service-tasks with body {\"service_label\":\"TDS Filing 2\"} and NO service_key — now returns HTTP 200 with the persisted document {id: sts_1795ee6696d1, service_key: \"tds_filing_2\" (auto-slugged from label), service_label: \"TDS Filing 2\", default_deadline_days:7, default_followup_days:3, auto_task_enabled:true}. Persistence confirmed via GET /api/settings/service-tasks; cleanup via DELETE returned HTTP 200 {\"deleted\":1}. (2) Full rerun of /app/backend/tests/test_auto_task_on_invoice.py — the same file exercised in iteration_5 — now shows 17/17 PASSED (0.40s), including the previously red test_label_only_post_ergonomics, with all 16 previously-green cases (TestTaskCustomerFields x3, TestServiceTasksCRUD x5 excluding ergonomics, TestAutoTaskToggle x3, TestAutoTaskHookOnInvoice x4, TestAutoTaskGuardRails x1) still green. Backend code inspected: server.py:497 now correctly declares `service_key: Optional[str] = None` on ServiceTaskSettingInput, letting the endpoint's existing `_slug(payload.service_key or payload.service_label)` handler derive the key from the label alone.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auto_task_on_invoice.py",
+    "/app/test_reports/pytest/iteration_6.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:497 ServiceTaskSettingInput.service_key is now Optional[str] = None — matches the endpoint's `key = _slug(payload.service_key or payload.service_label)` fallback logic at server.py:1964. Clean, minimal fix.",
+    "Verified auto-slug produces a URL-safe key from labels with spaces + digits: 'TDS Filing 2' -> 'tds_filing_2'. No regressions in duplicate-key detection (409) or in seed-defaults idempotency."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (17/17)",
+    "frontend": "not tested (out of scope per review)"
+  },
+  "seed_data_creation": "Per curl re-verification: one transient ServiceTaskSetting row {service_key:tds_filing_2, id:sts_1795ee6696d1} created and DELETEd in the same run. Pytest module also transiently creates+cleans up a 'tds_filing' row and the fixtures documented in iteration_5 (auto-task parties + invoices + tasks); all torn down by class-level teardown or by explicit DELETE at end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bug from iteration_5 is fully resolved. Run `pytest /app/backend/tests/test_auto_task_on_invoice.py -n 0 -v` (serial required — pytest.ini forces `-n 2 --dist loadscope` which races the DSC PATCH against the defaults-seeding test). BASE_URL overridable via TEST_BASE_URL env; defaults to http://localhost:8001.",
+  "rca_of_issue": "Fix confirmed at /app/backend/server.py:497 — `service_key: Optional[str] = None` on ServiceTaskSettingInput. The POST handler was already ergonomic-ready (`key = _slug(payload.service_key or payload.service_label)`), so no handler change was needed. Result: label-only payloads (e.g., {\"service_label\":\"TDS Filing 2\"}) now succeed with auto-derived slug (`tds_filing_2`), matching duplicate detection, seeding, and delete flows unchanged."
+}

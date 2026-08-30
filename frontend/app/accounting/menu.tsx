@@ -135,6 +135,13 @@ const REPORT_SECTIONS: Section[] = [
 
 const SETTINGS_SECTIONS: Section[] = [
   {
+    title: 'AUTOMATION',
+    defaultOpen: true,
+    rows: [
+      { icon: 'flash', iconColor: '#059669', iconBg: '#DCFCE7', label: 'Service-wise Task Assignment', route: '/accounting/settings/service-tasks' },
+    ],
+  },
+  {
     title: 'SETTINGS',
     defaultOpen: true,
     rows: [

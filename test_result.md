@@ -355,3 +355,44 @@ frontend_new_tasks:
     working: true
     priority: "medium"
     needs_retesting: true
+
+# --- 2026-08-30 auto-tasks + service settings iteration ---
+
+backend_new_tasks:
+  - task: "Task model + TaskInput + TaskUpdate now carry customer_id / customer_code / customer_name / customer_mobile / customer_pan / customer_address"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+  - task: "ServiceTaskSetting model + endpoints (/api/settings/service-tasks GET/POST/PATCH/DELETE)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+  - task: "Global toggle /api/settings/auto-task-toggle (GET/PUT)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+  - task: "Auto-task hook on sale invoice creation — creates Service Task + Follow-up Task, matches setting by first line item name (dsc/gst/tender/income_tax/registration), applies assignee + deadline_days + followup_days, denormalises customer fields, best-effort (does not fail invoice on error)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "Task Customer Details block (search + auto-fill) on tasks/new.tsx"
+    file: "frontend/app/tasks/new.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Task detail page shows Customer Details block"
+    file: "frontend/app/tasks/[id].tsx"
+    priority: medium
+    needs_retesting: false
+  - task: "Admin Service-wise Task Assignment settings screen"
+    file: "frontend/app/accounting/settings/service-tasks.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Menu Settings tab wires Automation → Service-wise Task Assignment"
+    file: "frontend/app/accounting/menu.tsx"
+    priority: medium
+    needs_retesting: false

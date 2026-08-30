@@ -368,6 +368,14 @@ class Task(BaseModel):
     assignee_id: Optional[str] = None
     assignee_name: Optional[str] = None
 
+    # Linked customer (denormalised for quick display)
+    customer_id: Optional[str] = None
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_mobile: Optional[str] = None
+    customer_pan: Optional[str] = None
+    customer_address: Optional[str] = None
+
     priority: str = "medium"
     status: str = "todo"
 
@@ -391,6 +399,12 @@ class TaskInput(BaseModel):
     deadline: Optional[str] = None
     assignee_id: Optional[str] = None
     assignee_name: Optional[str] = None
+    customer_id: Optional[str] = None
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_mobile: Optional[str] = None
+    customer_pan: Optional[str] = None
+    customer_address: Optional[str] = None
     priority: str = "medium"
 
 
@@ -418,6 +432,12 @@ class TaskUpdate(BaseModel):
     total_amount: Optional[float] = None
     paid_amount: Optional[float] = None
     sub_tasks: Optional[List[dict]] = None
+    customer_id: Optional[str] = None
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_mobile: Optional[str] = None
+    customer_pan: Optional[str] = None
+    customer_address: Optional[str] = None
 
 
 class MoveStageInput(BaseModel):
@@ -459,6 +479,32 @@ class TaskType(BaseModel):
 class TaskTypeInput(BaseModel):
     name: str
     workflow_id: Optional[str] = None
+
+
+class ServiceTaskSetting(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("sts"))
+    service_key: str                  # normalized: 'dsc', 'gst', 'tender', 'income_tax', ...
+    service_label: str                # display: 'DSC Service'
+    default_assignee_id: Optional[str] = None
+    default_assignee_name: Optional[str] = None
+    default_deadline_days: int = 7
+    default_followup_days: int = 3
+    auto_task_enabled: bool = True
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class ServiceTaskSettingInput(BaseModel):
+    service_key: Optional[str] = None
+    service_label: str
+    default_assignee_id: Optional[str] = None
+    default_assignee_name: Optional[str] = None
+    default_deadline_days: int = 7
+    default_followup_days: int = 3
+    auto_task_enabled: bool = True
+
+
+class AutoTaskGlobalToggle(BaseModel):
+    enabled: bool
 
 
 class AccountEntry(BaseModel):
@@ -1408,6 +1454,9 @@ async def create_task(payload: TaskInput, current: User = Depends(get_current_us
         total_amount=total, paid_amount=paid, dues_amount=dues,
         deadline=payload.deadline,
         assignee_id=payload.assignee_id, assignee_name=payload.assignee_name,
+        customer_id=payload.customer_id, customer_code=payload.customer_code,
+        customer_name=payload.customer_name, customer_mobile=payload.customer_mobile,
+        customer_pan=payload.customer_pan, customer_address=payload.customer_address,
         priority=payload.priority,
         created_by=current.user_id, created_by_name=current.name,
     )
@@ -1794,6 +1843,169 @@ async def delete_item(iid: str, current: User = Depends(require_admin_or_manager
     return {"deleted": res.deleted_count}
 
 
+# ============ Auto-task settings & helpers (used on Sale Invoice save) ============
+DEFAULT_SERVICES = [
+    ("dsc", "DSC Service"),
+    ("gst", "GST Service"),
+    ("tender", "Tender Service"),
+    ("income_tax", "Income Tax Service"),
+    ("registration", "Registration Service"),
+]
+
+
+async def _seed_default_service_settings():
+    for key, label in DEFAULT_SERVICES:
+        existing = await db.service_task_settings.find_one({"service_key": key}, {"_id": 0})
+        if not existing:
+            s = ServiceTaskSetting(service_key=key, service_label=label,
+                                   default_deadline_days=7, default_followup_days=3, auto_task_enabled=True)
+            await db.service_task_settings.insert_one(s.dict())
+
+
+def _slug(s: str) -> str:
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in (s or "")).strip("_")
+
+
+async def _match_service_setting(inv):
+    if inv.items:
+        docs = await db.service_task_settings.find({}, {"_id": 0}).to_list(50)
+        for it in inv.items:
+            nm = (it.name or "").lower()
+            slug = _slug(it.name)
+            for s in docs:
+                if s["service_key"] and (
+                    s["service_key"] in slug
+                    or s["service_key"] in nm
+                    or s["service_label"].lower() in nm
+                ):
+                    return s
+    return await db.service_task_settings.find_one({}, {"_id": 0})
+
+
+async def _get_global_auto_toggle() -> bool:
+    doc = await db.app_settings.find_one({"_id": "auto_task_on_invoice"}, {"_id": 0}) or {}
+    val = doc.get("enabled")
+    return True if val is None else bool(val)
+
+
+async def _auto_create_tasks_for_invoice(inv, current: User):
+    if not await _get_global_auto_toggle():
+        return []
+    setting = await _match_service_setting(inv)
+    if not setting or not setting.get("auto_task_enabled", True):
+        return []
+
+    cust = await db.customers.find_one({"id": inv.party_id}, {"_id": 0}) if inv.party_id else None
+    cust_pan = (cust or {}).get("pan")
+    cust_addr = (cust or {}).get("address")
+    cust_code = (cust or {}).get("customer_code")
+
+    service_label = setting["service_label"]
+    deadline_days = int(setting.get("default_deadline_days") or 7)
+    followup_days = int(setting.get("default_followup_days") or 3)
+    assignee_id = setting.get("default_assignee_id")
+    assignee_name = setting.get("default_assignee_name")
+
+    def _add_days(d: str, days: int) -> str:
+        try:
+            base = datetime.strptime(d, "%Y-%m-%d")
+        except Exception:
+            base = datetime.utcnow()
+        return (base + timedelta(days=days)).strftime("%Y-%m-%d")
+
+    common_customer = dict(
+        customer_id=inv.party_id, customer_code=cust_code, customer_name=inv.party_name,
+        customer_mobile=inv.party_mobile, customer_pan=cust_pan, customer_address=cust_addr,
+    )
+    common_voucher = dict(
+        voucher_no=inv.invoice_no, voucher_date=inv.date,
+        total_amount=inv.total_amount, paid_amount=inv.paid_amount,
+        dues_amount=round(inv.total_amount - inv.paid_amount, 2),
+    )
+
+    tasks_created = []
+    service_task = Task(
+        task_no=await _next_no("task_no", "TSK"),
+        title=f"{service_label} — {inv.party_name}",
+        description=f"Auto-generated on {inv.invoice_no}. Complete {service_label}.",
+        deadline=_add_days(inv.date, deadline_days),
+        assignee_id=assignee_id, assignee_name=assignee_name,
+        priority="high", status="todo",
+        created_by=current.user_id, created_by_name=current.name,
+        **common_customer, **common_voucher,
+    )
+    await db.tasks.insert_one(service_task.dict())
+    tasks_created.append(service_task.dict())
+
+    followup_task = Task(
+        task_no=await _next_no("task_no", "TSK"),
+        title=f"Payment Follow-up — {inv.party_name}",
+        description=f"Follow-up on {inv.invoice_no}. Balance: ₹{round(inv.balance, 2)}",
+        deadline=_add_days(inv.date, followup_days),
+        assignee_id=assignee_id, assignee_name=assignee_name,
+        priority="medium" if inv.balance <= 0 else "high", status="todo",
+        created_by=current.user_id, created_by_name=current.name,
+        **common_customer, **common_voucher,
+    )
+    await db.tasks.insert_one(followup_task.dict())
+    tasks_created.append(followup_task.dict())
+    return tasks_created
+
+
+@api_router.get("/settings/service-tasks", response_model=List[ServiceTaskSetting])
+async def list_service_task_settings(current: User = Depends(get_current_user)):
+    await _seed_default_service_settings()
+    docs = await db.service_task_settings.find({}, {"_id": 0}).sort("service_label", 1).to_list(200)
+    return [ServiceTaskSetting(**d) for d in docs]
+
+
+@api_router.post("/settings/service-tasks", response_model=ServiceTaskSetting)
+async def create_service_task_setting(payload: ServiceTaskSettingInput, current: User = Depends(require_admin)):
+    key = _slug(payload.service_key or payload.service_label)
+    if not key:
+        raise HTTPException(status_code=400, detail="service_key or service_label required")
+    existing = await db.service_task_settings.find_one({"service_key": key}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Service '{payload.service_label}' already exists")
+    data = payload.dict()
+    data["service_key"] = key
+    s = ServiceTaskSetting(**data)
+    await db.service_task_settings.insert_one(s.dict())
+    return s
+
+
+@api_router.patch("/settings/service-tasks/{sid}", response_model=ServiceTaskSetting)
+async def update_service_task_setting(sid: str, payload: ServiceTaskSettingInput, current: User = Depends(require_admin)):
+    updates = payload.dict()
+    updates["service_key"] = _slug(updates.get("service_key") or updates.get("service_label", ""))
+    await db.service_task_settings.update_one({"id": sid}, {"$set": updates})
+    d = await db.service_task_settings.find_one({"id": sid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    return ServiceTaskSetting(**d)
+
+
+@api_router.delete("/settings/service-tasks/{sid}")
+async def delete_service_task_setting(sid: str, current: User = Depends(require_admin)):
+    res = await db.service_task_settings.delete_one({"id": sid})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.get("/settings/auto-task-toggle")
+async def get_auto_task_toggle(current: User = Depends(get_current_user)):
+    return {"enabled": await _get_global_auto_toggle()}
+
+
+@api_router.put("/settings/auto-task-toggle")
+async def set_auto_task_toggle(payload: AutoTaskGlobalToggle, current: User = Depends(require_admin)):
+    await db.app_settings.update_one(
+        {"_id": "auto_task_on_invoice"},
+        {"$set": {"enabled": bool(payload.enabled)}},
+        upsert=True,
+    )
+    return {"enabled": bool(payload.enabled)}
+
+
 # ============ Invoices (Sale / Purchase) ============
 def _recalc_invoice(items: List[InvoiceItem]):
     subtotal = 0.0; total_discount = 0.0; total_tax = 0.0; total_amount = 0.0
@@ -1846,6 +2058,12 @@ async def create_invoice(payload: InvoiceInput, current: User = Depends(get_curr
         created_by=current.user_id, created_by_name=current.name,
     )
     await db.invoices.insert_one(inv.dict())
+    # Auto-create tasks (best-effort — do not fail invoice on error)
+    try:
+        if payload.invoice_type == "sale":
+            await _auto_create_tasks_for_invoice(inv, current)
+    except Exception as e:
+        logger.exception("Auto-task creation failed: %s", e)
     return inv
 
 

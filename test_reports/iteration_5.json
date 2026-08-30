@@ -1,0 +1,44 @@
+{
+  "summary": "Auto-task-on-invoice backend feature verified against http://localhost:8001 with admin@triveni.com. 16/17 pytest cases pass. Core hook works end-to-end: creating a sale invoice with a 'DSC Class 3' line item spawns exactly 2 tasks per DSC service setting — a 'DSC Service — <party>' task at priority='high' with deadline=invoice_date+5 days and a 'Payment Follow-up — <party>' task at deadline=invoice_date+2 days; both carry the configured assignee, all customer_* fields, voucher_no/voucher_date, and total_amount=2950. Global toggle OFF fully suppresses task creation; purchase invoices never spawn tasks; unmatched item name ('Some Other Item') still creates 2 fallback tasks from the first available setting. Task customer_* fields on POST/PATCH persist and partial-update semantics are respected. auto-task-toggle GET/PUT round-trips correctly. service-tasks CRUD: fresh GET re-seeds the 5 defaults (dsc/gst/tender/income_tax/registration) with deadline=7/followup=3/enabled=true; PATCH on dsc with assignee/5/2 updates in place; POST creates 'tds_filing' from label; duplicate POST returns 409; DELETE returns 200. One minor backend gap surfaced: POST /api/settings/service-tasks with only {service_label:'TDS Filing'} returns 422 because ServiceTaskSettingInput.service_key has no default — retry with service_key='' works and the endpoint's _slug() logic already handles label-only derivation.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/settings/service-tasks",
+        "issue": "ServiceTaskSettingInput.service_key is required (str, no default) so a body with only {service_label:'TDS Filing'} returns 422. The endpoint body already does `key = _slug(payload.service_key or payload.service_label)` — the ergonomic label-only path is blocked at Pydantic validation. Fix: change ServiceTaskSettingInput.service_key to Optional[str] = None in /app/backend/server.py:497."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auto_task_on_invoice.py",
+    "/app/test_reports/pytest/iteration_5.xml"
+  ],
+  "action_items": [
+    "In /app/backend/server.py line 497, change `service_key: str` -> `service_key: Optional[str] = None` on ServiceTaskSettingInput so POST /api/settings/service-tasks accepts label-only payloads (endpoint's _slug fallback already covers this)."
+  ],
+  "critical_code_review_comments": [
+    "Auto-task hook is correctly wrapped in try/except so invoice save never fails on task-creation errors (server.py:2062-2066). Best-effort guard rail confirmed.",
+    "`_match_service_setting` (server.py:1869) matches by service_key/label substring on both `_slug(item.name)` and raw lowercased name. It also falls back to db.service_task_settings.find_one({}) when no match is found — this creates 2 tasks from the FIRST available setting even for unrelated items (verified). Consider documenting this fallback so future service-task cleanups don't surprise users.",
+    "`_seed_default_service_settings` seeds on every GET /api/settings/service-tasks call — cheap idempotent upsert, but if an operator DELETEs a default row (as this test does), it silently reappears on next GET. Acceptable given the review says 'they seed on-demand'.",
+    "auto-task hook only fires for `invoice_type == 'sale'` (server.py:2063). Purchase-invoice suppression verified.",
+    "ServiceTaskSetting.default_deadline_days/followup_days are cast to int with `or 7`/`or 3` fallback inside _auto_create_tasks_for_invoice — protects against nulls."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auto_task_on_invoice.py (new — 17 test cases covering all 5 review items)"
+  ],
+  "success_rate": {
+    "backend": "94% (16/17 — 1 documented minor validation gap)",
+    "frontend": "not tested (out of scope per review)"
+  },
+  "seed_data_creation": "Per run: 4 fresh quick-customers (Auto-Task Party X, Auto-Task Off Party, Auto-Task Purchase Party, Fallback Party) with random 10-digit mobiles (prefix 911...), 3 fresh sale invoices + 1 purchase invoice on today's date, several auto-spawned tasks (6 total across the three sale invoices), one 'With customer' task (deleted at end of TestTaskCustomerFields), and a 'TDS Filing' service_task_settings row (deleted at end of TestServiceTasksCRUD). Default service_task_settings rows are wiped + reseeded once by test_list_seeds_defaults. Global auto-task toggle is restored to enabled=true at the end of every relevant test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use `/app/backend/tests/test_auto_task_on_invoice.py`. Override BASE_URL via TEST_BASE_URL env var if needed (default http://localhost:8001). File must be run serially with `-n 0` because pytest.ini forces `-n 2 --dist loadscope`; parallel workers cause the TestAutoTaskHookOnInvoice.test_precondition_dsc_configured PATCH (deadline=5) to race with TestServiceTasksCRUD.test_list_seeds_defaults (asserts defaults=7). The single failing test `test_label_only_post_ergonomics` is intentional — it will keep failing until the Pydantic model fix lands.",
+  "rca_of_issue": "test_label_only_post_ergonomics fails deterministically: POST /api/settings/service-tasks with body {service_label:'TDS Filing'} → HTTP 422 with detail on missing service_key. Root cause is ServiceTaskSettingInput.service_key declared as required `str` (server.py:497) even though the endpoint handler at server.py:1964 uses `_slug(payload.service_key or payload.service_label)` — implying the field was meant to be optional. Fix: make it `Optional[str] = None`. After fix, expected behavior: body-only-label → 200 with generated service_key='tds_filing'."
+}

@@ -135,11 +135,19 @@ export default function NewInvoice() {
         } catch {}
       }
       const suffix = attachErrors ? ` (${attachErrors} attachment upload failed)` : '';
+      // Check if auto-tasks are enabled to show hint
+      let autoHint = '';
+      if (!isPurchase) {
+        try {
+          const t = await api.get<{ enabled: boolean }>('/settings/auto-task-toggle');
+          if (t?.enabled) autoHint = '\n\n✅ 2 tasks auto-created (Service + Follow-up). Check Tasks tab.';
+        } catch {}
+      }
       if (andNew) {
         setParty(null); setItems([]); setNotes(''); setAttachments([]); setPaymentType('credit'); setDate(today()); setTerms('Net 60 days');
-        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}`);
+        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}${autoHint}`);
       } else {
-        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}`, [{ text: 'View', onPress: () => router.replace(`/accounting/invoices/${inv.id}` as any) }, { text: 'OK', onPress: () => router.back() }]);
+        Alert.alert('Saved', `${inv.invoice_no} saved successfully${suffix}${autoHint}`, [{ text: 'View', onPress: () => router.replace(`/accounting/invoices/${inv.id}` as any) }, { text: 'OK', onPress: () => router.back() }]);
       }
     } catch (e: any) {
       const msg = String(e?.message || 'Failed');

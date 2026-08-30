@@ -96,10 +96,6 @@ export default function NewInvoice() {
     })();
   }, [isPurchase, editId]);
 
-  useEffect(() => {
-    if (paymentType === 'cash') setPaidAmountInput(String(totals.total || ''));
-  }, [paymentType, totals.total]);
-
   const addItem = (i: PickedItem) => {
     setItems(p => [...p, {
       key: `${i.id}-${Date.now()}`,
@@ -128,6 +124,11 @@ export default function NewInvoice() {
     }
     return { subtotal, discount, tax, total };
   }, [items]);
+
+  // Auto-fill Paid = Total when cash mode selected
+  useEffect(() => {
+    if (paymentType === 'cash') setPaidAmountInput(String(totals.total || ''));
+  }, [paymentType, totals.total]);
 
   const paidNum = useMemo(() => {
     if (paymentType === 'cash') return totals.total;

@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend Sale Invoice bug-fix verification passed. The ReferenceError 'Cannot access totals before initialization' at /accounting/invoices/new is GONE. All three scenarios verified end-to-end at http://localhost:3000 with admin@triveni.com. (1) Screen loads clean — no JS/pageerror in console, header 'Sale Invoice' + SI preview number, Credit/Cash toggle, Invoice No/Date row, Payment Terms/Due On row, Customer picker, Add Items empty state, PAYMENT DETAILS card with Paid Amount input + Dues (auto) + Payment Mode row, Attachments section, and bottom bar 'Total Amount ₹ 0 / Save & New / Save' all render. testIDs verified present: new-invoice, in-date, in-due, pick-terms, pick-party, add-item, pay-details, in-paid, pick-pay-mode, save-btn, save-new. Reload of /accounting/invoices/new re-verified — still renders cleanly. (2) Added item 'Test Service' price 1000 GST 18 → line ₹ 1,180 and bottom total ₹ 1,180; typing 500 in in-paid (Credit default) → Dues recalculated to ₹ 680 immediately (regex match); tapping pick-pay-mode opened sheet with pm-cash/pm-bank_transfer/pm-cheque/pm-upi/pm-other; tapping pm-upi closed sheet and Payment Mode row now shows 'UPI'; switching to Cash segment auto-filled in-paid=1180 and Dues=₹ 0. (3) Added new party 'Bugfix Test Party 91994' via pick-party → add-new-party (testIDs ap-name/ap-mob/ap-save). save-btn produced SI-0041 which was located in /accounting/invoices with status PAID, party 'Bugfix Test Party 91994', total ₹ 1,180, payment-mode chip 'UPI', date 2026-08-30. Zero console errors across all steps. No React Native red-screen. No deprecated-package issues detected in the code touched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/S1_new_invoice.png (fresh new-invoice screen with PAYMENT DETAILS)",
+    "/tmp/S2_dues_recalc.png (after item added, Paid=500, Dues=₹680 recalc)",
+    "/tmp/S2_upi_selected.png (Payment Mode row showing UPI)",
+    "/tmp/S2_cash_switch.png (Cash segment: Paid auto=1180, Dues=0)",
+    "/tmp/S3b_party_ok.png (Bugfix Test Party set + item + UPI)",
+    "/tmp/S3_scrolled_list.png (invoices list — SI-0041 PAID / Bugfix Test Party 91994 / UPI / ₹1,180)"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "new.tsx line 113 useMemo `totals` is now declared BEFORE the useEffect at line 129 that reads totals.total — the temporal dead zone crash is resolved. Hook order remains stable across renders.",
+    "The `paidNum` useMemo clamps paid to totals.total (Math.min) which prevents Dues going negative — good defensive logic.",
+    "Auto-fill effect only writes paid when paymentType==='cash' — user-entered value in Credit mode is preserved."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not tested per request)", "frontend": "100% (3/3 scenarios)"},
+  "seed_data_creation": "Created 1 new customer 'Bugfix Test Party 91994' (mobile 9899991994, TRV-CUST-0053) and 1 new invoice SI-0041 (Cash/PAID, UPI mode, Test Service, ₹1,180). Reused existing 'Test Service' item (ITM-0004) — the 'add-new-item' path returned 'already exists' the second time so the test picked the existing item by testID.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login testIDs: input-email, input-password, submit-btn. Invoice screen testIDs: new-invoice, in-date, in-due, pick-terms, pick-party, add-item, pay-details, in-paid, pick-pay-mode, save-btn, save-new, attach-add. Party modal: add-new-party, ap-name, ap-mob (not ap-mobile), ap-email, ap-gst, ap-pan, ap-aad, ap-addr, ap-save. Item modal: add-new-item, ai-name, ai-unit, ai-hsn, ai-price, ai-gst, ai-save. Cash/Credit segments in header have NO testIDs — must be clicked by text match. Payment mode sheet options: pm-cash / pm-bank_transfer / pm-cheque / pm-upi / pm-other. RN Alert.alert renders as an in-app modal (not window.alert) — its content appears in document.body.innerText but must be read before clicking OK. Invoice list is sorted by date DESC, so an invoice with today's default date (2026-08-30) may fall below newer test-seeded invoices dated 2026-09 / 2026-10 — must scroll to find it.",
+  "rca_of_issue": "Original crash: useEffect at (old line ~62) referenced `totals.total` in its dependency array while `totals` useMemo was declared later in the same component. JavaScript's temporal dead zone throws 'Cannot access totals before initialization' during initial render because the const binding exists but is not yet initialised when the effect body/deps are evaluated. Fix (verified): the effect that auto-fills Paid=Total in Cash mode was moved to line 129, immediately AFTER the `totals` useMemo declaration on line 113. Hook order is preserved. Verified by (a) fresh navigation, (b) hard reload, (c) full end-to-end save flow — none reproduced the error and console captured 0 errors."
+}

@@ -396,3 +396,40 @@ frontend_new_tasks:
     file: "frontend/app/accounting/menu.tsx"
     priority: medium
     needs_retesting: false
+
+# --- 2026-08-30 invoice-pdf + edit/patch + payment_mode iteration ---
+
+backend_new_tasks:
+  - task: "Invoice payment_mode field (cash/bank_transfer/cheque/upi/other) persists on POST/PATCH"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+  - task: "PATCH /api/invoices/{iid} admin-only edit with recalculated totals & balance"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+  - task: "DELETE /api/invoices/{iid} now admin-only (was admin_or_manager)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+  - task: "GET /api/invoices/{iid}/pdf renders Tax Invoice matching reference layout — supports Authorization header AND ?token=... query param for browser open"
+    file: "backend/invoice_pdf.py + backend/server.py"
+    priority: high
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "Invoice form: Paid Amount, Dues (auto), Payment Mode dropdown; also supports edit_id param for PATCH edit flow"
+    file: "frontend/app/accounting/invoices/new.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Invoice list: Print button (all), Edit + Delete (admin only) per row + payment mode chip"
+    file: "frontend/app/accounting/invoices/index.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Invoice detail: Print / Edit (admin) / Delete (admin) header buttons + payment mode display"
+    file: "frontend/app/accounting/invoices/[id].tsx"
+    priority: high
+    needs_retesting: false

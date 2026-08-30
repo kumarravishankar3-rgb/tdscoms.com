@@ -66,6 +66,10 @@ export const api = {
   get: <T>(p: string) => request<T>(p),
   post: <T>(p: string, body: any) => request<T>(p, { method: 'POST', body: JSON.stringify(body) }),
   patch: <T>(p: string, body: any) => request<T>(p, { method: 'PATCH', body: JSON.stringify(body) }),
+  invoicePdfUrl: async (iid: string) => {
+    const token = await tokenStore.get();
+    return `${BASE}/api/invoices/${iid}/pdf?token=${encodeURIComponent(token || '')}`;
+  },
   put: <T>(p: string, body: any) => request<T>(p, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
   base: BASE,

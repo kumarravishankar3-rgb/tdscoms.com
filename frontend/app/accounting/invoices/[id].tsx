@@ -1,17 +1,20 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable, Platform, Linking } from 'react-native';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { api } from '@/src/api';
 import { ScreenHeader } from '@/src/ScreenHeader';
 import { AttachmentsSection, Attachment } from '@/src/AttachmentsSection';
+import { useAuth } from '@/src/AuthContext';
 
 const inr = (n: any) => `₹ ${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export default function InvoiceDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [inv, setInv] = useState<any | null>(null);
 
   const load = useCallback(async () => { try { setInv(await api.get<any>(`/invoices/${id}`)); } catch {} }, [id]);
@@ -19,6 +22,14 @@ export default function InvoiceDetail() {
 
   const onAttachmentsChange = (list: Attachment[]) => setInv((p: any) => p ? { ...p, attachments: list } : p);
 
+  const printPdf = async () => {
+    try {
+      const url = await api.invoicePdfUrl(inv.id);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
+      else await Linking.openURL(url);
+    } catch (e: any) { Alert.alert('Failed', e?.message || 'Unable to open PDF'); }
+  };
+  const edit = () => router.push({ pathname: '/accounting/invoices/new', params: { edit_id: inv.id, type: inv.invoice_type } } as any);
   const remove = () => Alert.alert('Delete Invoice?', `Delete ${inv.invoice_no}? This cannot be undone.`, [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Delete', style: 'destructive', onPress: async () => { try { await api.del(`/invoices/${id}`); router.back(); } catch (e: any) { Alert.alert('Failed', e?.message || 'Try again'); } } },
@@ -34,7 +45,15 @@ export default function InvoiceDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: '#F4F6FB' }} testID="invoice-detail">
       <ScreenHeader title={inv.invoice_type === 'purchase' ? 'Purchase Bill' : 'Sale Invoice'} right={(
-        <Pressable onPress={remove} hitSlop={8}><Ionicons name="trash-outline" size={22} color={colors.error} /></Pressable>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <Pressable onPress={printPdf} hitSlop={8} testID="print-hdr"><Ionicons name="print" size={22} color={colors.brandPrimary} /></Pressable>
+          {isAdmin ? (
+            <>
+              <Pressable onPress={edit} hitSlop={8} testID="edit-hdr"><Ionicons name="create-outline" size={22} color="#B45309" /></Pressable>
+              <Pressable onPress={remove} hitSlop={8} testID="del-hdr"><Ionicons name="trash-outline" size={22} color={colors.error} /></Pressable>
+            </>
+          ) : null}
+        </View>
       )} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl }}>
         <View style={styles.card}>
@@ -46,6 +65,7 @@ export default function InvoiceDetail() {
           </View>
           <Text style={styles.party}>{inv.party_name}</Text>
           <Text style={styles.meta}>📱 {inv.party_mobile || '—'} • {inv.date} • {inv.payment_type?.toUpperCase()} • Due: {inv.due_date || '—'}</Text>
+          {inv.payment_mode ? <Text style={styles.meta}>💳 Payment Mode: {String(inv.payment_mode).replace('_', ' ').toUpperCase()}</Text> : null}
         </View>
 
         {inv.items?.length ? (

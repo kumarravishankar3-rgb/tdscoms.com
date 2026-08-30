@@ -22,14 +22,26 @@ const TERMS = [
   { label: 'Custom', days: 0 },
 ];
 
+const PAY_MODES = [
+  { key: 'cash', label: 'Cash', icon: 'cash' },
+  { key: 'bank_transfer', label: 'Bank Transfer', icon: 'business' },
+  { key: 'cheque', label: 'Cheque', icon: 'document-text' },
+  { key: 'upi', label: 'UPI', icon: 'phone-portrait' },
+  { key: 'other', label: 'Other', icon: 'ellipsis-horizontal' },
+] as const;
+
 type LineItem = { key: string; item_id?: string; name: string; unit: string; qty: string; price: string; tax_rate: string; discount: string };
 
 export default function NewInvoice() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ type?: string }>();
+  const params = useLocalSearchParams<{ type?: string; edit_id?: string }>();
   const isPurchase = params?.type === 'purchase';
+  const editId = params?.edit_id || null;
 
   const [paymentType, setPaymentType] = useState<'credit' | 'cash'>('credit');
+  const [paymentMode, setPaymentMode] = useState<string>('cash');
+  const [showPayMode, setShowPayMode] = useState(false);
+  const [paidAmountInput, setPaidAmountInput] = useState<string>('');
   const [date, setDate] = useState(today());
   const [terms, setTerms] = useState<string>('Net 60 days');
   const [dueDate, setDueDate] = useState(addDays(today(), 60));
@@ -52,16 +64,41 @@ export default function NewInvoice() {
     if (t && t.days > 0) setDueDate(addDays(date, t.days));
   }, [date, terms]);
 
-  // Preview counter
+  // Preview counter or load existing (edit mode)
   useEffect(() => {
     (async () => {
+      if (editId) {
+        try {
+          const ex = await api.get<any>(`/invoices/${editId}`);
+          setInvoiceNo(ex.invoice_no || 'EDIT');
+          setPaymentType(ex.payment_type || 'credit');
+          setPaymentMode(ex.payment_mode || 'cash');
+          setPaidAmountInput(String(ex.paid_amount || ''));
+          setDate(ex.date || today());
+          setTerms(ex.payment_terms || 'Custom');
+          setDueDate(ex.due_date || today());
+          setParty({ id: ex.party_id, name: ex.party_name, mobile: ex.party_mobile || '', pan: '', aadhar: '', gst_no: ex.party_gst || null, customer_code: null } as any);
+          setItems((ex.items || []).map((it: any, idx: number) => ({
+            key: `${it.item_id || idx}-${idx}`, item_id: it.item_id || undefined,
+            name: it.name, unit: it.unit || 'PCS', qty: String(it.qty || 1),
+            price: String(it.price || 0), tax_rate: String(it.tax_rate || 0), discount: String(it.discount || 0),
+          })));
+          setNotes(ex.notes || '');
+          setAttachments(ex.attachments || []);
+        } catch (e: any) { Alert.alert('Load failed', String(e?.message || 'Unable to load')); }
+        return;
+      }
       try {
         const list = await api.get<any[]>(`/invoices?invoice_type=${isPurchase ? 'purchase' : 'sale'}`);
         const prefix = isPurchase ? 'PB' : 'SI';
         setInvoiceNo(`${prefix}-${String((list?.length || 0) + 1).padStart(4, '0')} (preview)`);
       } catch {}
     })();
-  }, [isPurchase]);
+  }, [isPurchase, editId]);
+
+  useEffect(() => {
+    if (paymentType === 'cash') setPaidAmountInput(String(totals.total || ''));
+  }, [paymentType, totals.total]);
 
   const addItem = (i: PickedItem) => {
     setItems(p => [...p, {
@@ -92,6 +129,14 @@ export default function NewInvoice() {
     return { subtotal, discount, tax, total };
   }, [items]);
 
+  const paidNum = useMemo(() => {
+    if (paymentType === 'cash') return totals.total;
+    const p = parseFloat(paidAmountInput);
+    if (Number.isFinite(p) && p >= 0) return Math.min(p, totals.total);
+    return 0;
+  }, [paidAmountInput, paymentType, totals.total]);
+  const duesNum = useMemo(() => Math.max(0, totals.total - paidNum), [totals.total, paidNum]);
+
   const save = async (andNew: boolean) => {
     if (!party) return Alert.alert('Customer required', 'Please select or add a customer first');
     if (items.length === 0 && totals.total === 0) {
@@ -102,6 +147,7 @@ export default function NewInvoice() {
       const body = {
         invoice_type: isPurchase ? 'purchase' : 'sale',
         payment_type: paymentType,
+        payment_mode: paymentMode,
         date, payment_terms: terms, due_date: paymentType === 'cash' ? date : dueDate,
         party_id: party.id, party_name: party.name, party_mobile: party.mobile || null, party_gst: party.gst_no || null,
         items: items.map(it => ({
@@ -110,10 +156,11 @@ export default function NewInvoice() {
           tax_rate: parseFloat(it.tax_rate) || 0, discount: parseFloat(it.discount) || 0,
           amount: 0,
         })),
-        total_amount: totals.total, paid_amount: paymentType === 'cash' ? totals.total : 0,
+        total_amount: totals.total,
+        paid_amount: paidNum,
         notes: notes || null,
       };
-      const inv: any = await api.post('/invoices', body);
+      const inv: any = editId ? await api.patch(`/invoices/${editId}`, body) : await api.post('/invoices', body);
       // Upload queued attachments (best-effort)
       let attachErrors = 0;
       for (const a of attachments) {
@@ -124,7 +171,7 @@ export default function NewInvoice() {
         }
       }
       // Also create an Income record so it flows into dashboard/reports when it's a Sale
-      if (!isPurchase && totals.total > 0) {
+      if (!editId && !isPurchase && totals.total > 0) {
         try {
           await api.post('/income', {
             date, client_id: party.id, client_name: party.name, client_mobile: party.mobile || null,
@@ -250,6 +297,39 @@ export default function NewInvoice() {
             ))
           )}
 
+          {/* Payment details: Paid / Dues / Payment Mode */}
+          <View style={styles.payCard} testID="pay-details">
+            <Text style={styles.payHead}>PAYMENT DETAILS</Text>
+            <View style={styles.rowGrid}>
+              <View style={styles.cell}>
+                <Text style={styles.cellLbl}>Paid Amount</Text>
+                <TextInput
+                  testID="in-paid"
+                  keyboardType="numeric"
+                  value={paidAmountInput}
+                  onChangeText={setPaidAmountInput}
+                  style={[styles.cellInput, { color: '#059669' }]}
+                  placeholder="0"
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+              <View style={styles.cell}>
+                <Text style={styles.cellLbl}>Dues (auto)</Text>
+                <Text style={[styles.cellVal, { color: duesNum > 0 ? '#DC2626' : '#059669' }]}>{inr(duesNum)}</Text>
+              </View>
+            </View>
+            <Pressable onPress={() => setShowPayMode(true)} style={styles.payModeRow} testID="pick-pay-mode">
+              <View style={styles.payModeIcon}>
+                <Ionicons name={(PAY_MODES.find(p => p.key === paymentMode)?.icon as any) || 'cash'} size={20} color={colors.brandPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cellLbl}>Payment Mode</Text>
+                <Text style={styles.cellVal}>{PAY_MODES.find(p => p.key === paymentMode)?.label || 'Cash'}</Text>
+              </View>
+              <Ionicons name="chevron-down" size={18} color={colors.muted} />
+            </Pressable>
+          </View>
+
           {/* Attachments */}
           <AttachmentsSection attachments={attachments} onChange={setAttachments} title="Attachments" hint="Bills, PO, POD, GST notes • Max 10 MB per file" />
 
@@ -292,6 +372,22 @@ export default function NewInvoice() {
               <Pressable key={t.label} onPress={() => { setTerms(t.label); setShowTerms(false); }} style={styles.termsRow} testID={`term-${t.label}`}>
                 <Text style={{ flex: 1, color: '#111827', fontWeight: '600' }}>{t.label}</Text>
                 {terms === t.label ? <Ionicons name="checkmark" size={20} color={colors.brandPrimary} /> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      ) : null}
+
+      {/* Payment mode modal */}
+      {showPayMode ? (
+        <Pressable style={styles.termsOverlay} onPress={() => setShowPayMode(false)}>
+          <View style={styles.termsSheet}>
+            <Text style={styles.termsTitle}>Payment Mode</Text>
+            {PAY_MODES.map(m => (
+              <Pressable key={m.key} onPress={() => { setPaymentMode(m.key); setShowPayMode(false); }} style={styles.termsRow} testID={`pm-${m.key}`}>
+                <Ionicons name={m.icon as any} size={20} color={colors.brandPrimary} />
+                <Text style={{ flex: 1, color: '#111827', fontWeight: '600', marginLeft: 10 }}>{m.label}</Text>
+                {paymentMode === m.key ? <Ionicons name="checkmark" size={20} color={colors.brandPrimary} /> : null}
               </Pressable>
             ))}
           </View>
@@ -361,4 +457,8 @@ const styles = StyleSheet.create({
   termsSheet: { backgroundColor: '#FFF', borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg },
   termsTitle: { fontSize: font.lg, fontWeight: '800', color: '#111827', marginBottom: 8 },
   termsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  payCard: { backgroundColor: '#FFF', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 10 },
+  payHead: { fontSize: 11, fontWeight: '900', letterSpacing: 1, color: '#374151' },
+  payModeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 10 },
+  payModeIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
 });

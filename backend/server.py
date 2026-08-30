@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
+from invoice_pdf import build_invoice_pdf
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, EmailStr
@@ -663,6 +664,7 @@ class Invoice(BaseModel):
     invoice_no: Optional[str] = None    # SI-0001 / PB-0001
     invoice_type: str = "sale"          # sale | purchase
     payment_type: str = "credit"        # credit | cash
+    payment_mode: str = "cash"          # cash | bank_transfer | cheque | upi | other
     date: str                            # YYYY-MM-DD
     payment_terms: Optional[str] = None  # Net 15/30/45/60/90 or Custom
     due_date: Optional[str] = None
@@ -688,6 +690,7 @@ class Invoice(BaseModel):
 class InvoiceInput(BaseModel):
     invoice_type: str = "sale"
     payment_type: str = "credit"
+    payment_mode: str = "cash"
     date: str
     payment_terms: Optional[str] = None
     due_date: Optional[str] = None
@@ -2051,6 +2054,7 @@ async def create_invoice(payload: InvoiceInput, current: User = Depends(get_curr
     status = "paid" if balance <= 0 and total > 0 else ("partial" if paid > 0 else "unpaid")
     inv = Invoice(
         invoice_no=no, invoice_type=payload.invoice_type, payment_type=payload.payment_type,
+        payment_mode=payload.payment_mode or "cash",
         date=payload.date, payment_terms=payload.payment_terms, due_date=payload.due_date,
         party_id=payload.party_id, party_name=payload.party_name, party_mobile=payload.party_mobile, party_gst=payload.party_gst,
         items=items, subtotal=subtotal, total_discount=tdisc, total_tax=ttax, total_amount=total,
@@ -2087,8 +2091,63 @@ async def get_invoice(iid: str, current: User = Depends(get_current_user)):
     return Invoice(**d)
 
 
+@api_router.get("/invoices/{iid}/pdf")
+async def get_invoice_pdf(iid: str, token: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    # Accept token either via Authorization header (via dependency) OR ?token=... (browser)
+    tk = None
+    if authorization and authorization.startswith("Bearer "):
+        tk = authorization[7:]
+    elif token:
+        tk = token
+    if not tk:
+        raise HTTPException(status_code=401, detail="Auth required")
+    session = await db.user_sessions.find_one({"session_token": tk}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    d = await db.invoices.find_one({"id": iid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    # Fetch customer for address
+    cust = await db.customers.find_one({"id": d.get("party_id")}, {"_id": 0}) if d.get("party_id") else None
+    pdf_bytes = await run_in_threadpool(build_invoice_pdf, d, cust)
+    fname = f"{d.get('invoice_no') or 'invoice'}_{(d.get('date') or '').replace('-','')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{fname}"'},
+    )
+
+
+@api_router.patch("/invoices/{iid}", response_model=Invoice)
+async def update_invoice(iid: str, payload: InvoiceInput, current: User = Depends(require_admin)):
+    existing = await db.invoices.find_one({"id": iid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    items, subtotal, tdisc, ttax, ttotal = _recalc_invoice(payload.items or [])
+    total = ttotal if ttotal > 0 else float(payload.total_amount or 0)
+    paid = float(payload.paid_amount or 0)
+    if payload.payment_type == "cash":
+        paid = total
+    balance = round(total - paid, 2)
+    status = "paid" if balance <= 0 and total > 0 else ("partial" if paid > 0 else "unpaid")
+    updates = {
+        "invoice_type": payload.invoice_type, "payment_type": payload.payment_type,
+        "payment_mode": payload.payment_mode or "cash",
+        "date": payload.date, "payment_terms": payload.payment_terms, "due_date": payload.due_date,
+        "party_id": payload.party_id, "party_name": payload.party_name,
+        "party_mobile": payload.party_mobile, "party_gst": payload.party_gst,
+        "items": [it.dict() for it in items],
+        "subtotal": subtotal, "total_discount": tdisc, "total_tax": ttax,
+        "total_amount": total, "paid_amount": paid, "balance": balance, "status": status,
+        "notes": payload.notes,
+    }
+    await db.invoices.update_one({"id": iid}, {"$set": updates})
+    d = await db.invoices.find_one({"id": iid}, {"_id": 0})
+    return Invoice(**d)
+
+
 @api_router.delete("/invoices/{iid}")
-async def delete_invoice(iid: str, current: User = Depends(require_admin_or_manager)):
+async def delete_invoice(iid: str, current: User = Depends(require_admin)):
     res = await db.invoices.delete_one({"id": iid})
     return {"deleted": res.deleted_count}
 

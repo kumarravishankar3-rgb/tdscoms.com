@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 7 backend-only verification for Invoice payment_mode + PATCH + DELETE + PDF endpoints. 18/18 pytest cases PASSED (100%). Covered: (a) payment_mode persists on POST for upi/cheque/bank_transfer/cash/other with correct paid_amount/balance/status; default 'cash' when omitted; verified via GET. (b) PATCH admin-only — full pay (paid=1000, balance=0, status=paid), change payment_mode to cheque + add extra item with server-side total recalc (1000+2*250=1500, status=partial, items=2), 404 on invalid id, 403 for employee role. (c) DELETE admin-only — 403 for employee, 200 for admin, followed by 404 GET verifying deletion. (d) PDF endpoint — 200 + Content-Type application/pdf + inline Content-Disposition with SI-####_YYYYMMDD.pdf filename + body starts with %PDF- and > 2KB, both via Authorization header and via ?token= query param; 401 on missing/invalid token, 404 on invalid iid, employee token allowed (200 + PDF).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_invoice_pdf_patch_iter7.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py update_invoice (line 2122) correctly falls back to payload.total_amount when items produce ttotal==0, allowing clients to pass 0 to force a server-side recalc (path used in test_patch_change_mode_and_add_item).",
+    "PDF endpoint (line 2094) correctly parses token from Authorization header first, then falls back to ?token query param — safer for browser preview flows.",
+    "Duplicate-invoice guard in POST /api/invoices keys off (party_id, date, invoice_type, status != cancelled). Tests already account for this by rotating date+customer per case."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "N/A"},
+  "seed_data_creation": "Created ~10 TEST_ prefixed customers via /api/customers/quick and ~10 invoices across payment_mode cases and PATCH/DELETE/PDF flows. Some invoices remain in DB (partial/paid) as test data; DELETE tests cleaned up their own invoices. Employee-forbidden invoices were cleaned up post-assertion.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reused existing seeded employee credentials (employee@triveni.com / Employee@123 from /app/memory/test_credentials.md) — no signup path required. New test file: /app/backend/tests/test_invoice_pdf_patch_iter7.py. Uses BASE_URL=http://localhost:8001 directly (per request). Payment modes accepted by backend: cash, bank_transfer, upi, cheque, other (default cash). Invoice PATCH accepts total_amount=0 to force server-side recalculation from items.",
+  "rca_of_issue": "N/A — no failures encountered."
+}

@@ -120,3 +120,30 @@ See `/app/memory/test_credentials.md`.
 ### Testing
 - iteration_5: 17 pytest cases → 16 green, 1 minor UX defect (label-only POST needed service_key)
 - iteration_6: fix applied (`Optional[str]=None`), rerun **17/17 green**
+
+---
+
+## Sale Invoice PDF + Permissions + Payment Details — DONE 2026-08-30
+
+### PDF generation (matches reference layout)
+- `GET /api/invoices/{iid}/pdf` — server-side ReportLab PDF, supports **Bearer header** OR `?token=` query for browser open
+- Company constants hard-coded to actual TDSC branding (name, address, phone, email, GSTIN, state, bank SBI SME BIHARSHARIFF, A/C 42137607814, IFSC SBIN0063706, signatory अंजू कुमारी)
+- Sections: company header (left) / Tax Invoice + meta grid (right) → Bill To → items table with dark header + total row → Amount in words + Amounts breakdown (Sub Total / Total / Received / Balance) → Description + Terms + For/Signatory (3-col) → Bank Details block
+- Payment mode & cash denomination shown in Description block
+
+### Permissions (role-gated)
+- **Print** (`GET /api/invoices/{iid}/pdf`): any authenticated user (admin + employee)
+- **Edit** (`PATCH /api/invoices/{iid}`): **admin only** (403 for employee)
+- **Delete** (`DELETE /api/invoices/{iid}`): **admin only** (was admin_or_manager)
+- Frontend list & detail views hide Edit/Delete buttons for non-admin
+
+### Payment details (3 new form fields)
+- `payment_mode` field added to `Invoice` + `InvoiceInput` (default `cash`, options: cash / bank_transfer / cheque / upi / other)
+- Invoice form new section "PAYMENT DETAILS" with **Paid Amount** input, **Dues** auto-calc (Total − Paid), **Payment Mode** dropdown (5 options with icons)
+- Cash payment_type auto-fills paid = total; credit allows partial pay entry
+- Backend recalculates `paid_amount, balance, status` on both POST and PATCH
+- PDF shows "Payment Mode: <mode>" in Description block
+
+### Testing
+- 18/18 pytest cases green in `test_reports/iteration_7.json`
+- Covers: 5 payment modes + default, POST persistence, PATCH full-pay + item add + recalc, 404 guards, **403 role guard live-tested with employee@triveni.com**, PDF via both Bearer + ?token, PDF for employee (Print allowed), missing/invalid token → 401

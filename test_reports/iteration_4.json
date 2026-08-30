@@ -1,0 +1,32 @@
+{
+  "summary": "New single-doc GET endpoints GET /api/expenses/{eid} and GET /api/income/{iid} verified against http://localhost:8001 with admin@triveni.com. 15/15 pytest cases passed (7 new + 8 regression). New endpoints return full doc with expense_no/income_no and attachments array, upload-then-GET reflects attachment metadata {path,name,size,content_type,uploaded_at,uploaded_by}, delete brings the list back to []. Invalid ids return 404 on all three collections (invoice/expense/income). Full voucher-attachment regression (upload x2, delete, 10 MB cap → 400, invalid-id POST/DELETE → 404) still green after latest backend restart.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_voucher_get_endpoints.py",
+    "/app/backend/tests/test_voucher_attachments.py",
+    "/app/test_reports/pytest/iteration_4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/expenses/{eid} and GET /api/income/{iid} correctly return 404 for unknown ids and expose the same attachments array that POST/DELETE mutate — server.py lines 1689 and 1752.",
+    "Class-scoped fixtures defined as instance methods emit a PytestRemovedIn10Warning; non-blocking but should be refactored to @classmethod in a future cleanup pass."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_voucher_get_endpoints.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "not tested (out of scope)"},
+  "seed_data_creation": "One fresh expense (OfficeSuppliesTest / 1234 / cash / TestVendor / 2026-08-30) and one fresh income (IncomeTestParty / DSC Services / Class3 / 5000 / cash / 2026-08-30) per run, plus a fresh /customers/quick party + sale invoice for the regression suite. Attachments uploaded during tests are deleted by the same tests; underlying voucher rows remain (all values prefixed with TEST_ where applicable).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New single-doc GETs (/api/expenses/{eid}, /api/income/{iid}) and full voucher-attachment lifecycle are green on localhost:8001. Reuse /app/backend/tests/test_voucher_get_endpoints.py and /app/backend/tests/test_voucher_attachments.py; override BASE_URL via TEST_BASE_URL env var if needed. Both files run in parallel via pytest-xdist without cross-test data collisions.",
+  "rca_of_issue": "N/A — no issues found."
+}

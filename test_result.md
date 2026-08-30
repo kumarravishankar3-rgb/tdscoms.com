@@ -315,3 +315,43 @@ frontend_new_tasks:
     working: true
     priority: "medium"
     needs_retesting: false
+
+# --- 2026-08-30 attachments COMPLETION iteration ---
+
+backend_new_tasks:
+  - task: "GET /api/expenses/{eid} single-item endpoint (needed for expense detail view)"
+    file: "backend/server.py"
+    working: true
+    priority: "high"
+    needs_retesting: true
+
+  - task: "GET /api/income/{iid} single-item endpoint (needed for income detail view)"
+    file: "backend/server.py"
+    working: true
+    priority: "high"
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "Expense detail view (/accounting/expenses/[id]) with attachments add/delete + Verify/Approve/Reject actions"
+    file: "frontend/app/accounting/expenses/[id].tsx"
+    working: true
+    priority: "high"
+    needs_retesting: true
+
+  - task: "Income detail view (/accounting/income/[id]) with attachments add/delete"
+    file: "frontend/app/accounting/income/[id].tsx"
+    working: true
+    priority: "high"
+    needs_retesting: true
+
+  - task: "Expense list rows now navigable + attachment count chip"
+    file: "frontend/app/accounting/expenses/index.tsx"
+    working: true
+    priority: "medium"
+    needs_retesting: true
+
+  - task: "Income list rows now navigable + attachment count chip"
+    file: "frontend/app/accounting/income/index.tsx"
+    working: true
+    priority: "medium"
+    needs_retesting: true

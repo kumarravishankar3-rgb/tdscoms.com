@@ -1686,6 +1686,13 @@ async def list_income(client_id: Optional[str] = None, from_date: Optional[str] 
     return [Income(**d) for d in docs]
 
 
+@api_router.get("/income/{iid}", response_model=Income)
+async def get_income(iid: str, current: User = Depends(get_current_user)):
+    d = await db.income.find_one({"id": iid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Not found")
+    return Income(**d)
+
+
 @api_router.delete("/income/{iid}")
 async def delete_income(iid: str, current: User = Depends(require_admin_or_manager)):
     res = await db.income.delete_one({"id": iid})
@@ -1740,6 +1747,13 @@ async def decide_expense(eid: str, payload: ExpenseDecision, current: User = Dep
 async def delete_expense(eid: str, current: User = Depends(require_admin)):
     res = await db.expenses.delete_one({"id": eid})
     return {"deleted": res.deleted_count}
+
+
+@api_router.get("/expenses/{eid}", response_model=Expense)
+async def get_expense(eid: str, current: User = Depends(get_current_user)):
+    d = await db.expenses.find_one({"id": eid}, {"_id": 0})
+    if not d: raise HTTPException(status_code=404, detail="Not found")
+    return Expense(**d)
 
 
 # ============ Items (catalog) ============

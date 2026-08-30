@@ -24,17 +24,27 @@ export default function IncomeList() {
       ) : (
         <FlatList data={list} keyExtractor={i => i.id} contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl }}
           renderItem={({ item }) => (
-            <Card>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.no}>{item.income_no} • {item.date}</Text>
-                  <Text style={styles.title}>{item.client_name}</Text>
-                  <Text style={styles.muted}>{item.service_category}{item.service_name ? ` • ${item.service_name}` : ''}</Text>
-                  <Text style={styles.muted}>{item.payment_mode}{item.employee_name ? ` • by ${item.employee_name}` : ''}</Text>
+            <Pressable onPress={() => router.push(`/accounting/income/${item.id}` as any)} testID={`inc-${item.id}`}>
+              <Card>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.no}>{item.income_no} • {item.date}</Text>
+                      {(item.attachments?.length || 0) > 0 ? (
+                        <View style={styles.attachChip}>
+                          <Ionicons name="attach" size={11} color={colors.brandPrimary} />
+                          <Text style={styles.attachTxt}>{item.attachments.length}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.title}>{item.client_name}</Text>
+                    <Text style={styles.muted}>{item.service_category}{item.service_name ? ` • ${item.service_name}` : ''}</Text>
+                    <Text style={styles.muted}>{item.payment_mode}{item.employee_name ? ` • by ${item.employee_name}` : ''}</Text>
+                  </View>
+                  <Text style={styles.amt}>{inr(item.amount)}</Text>
                 </View>
-                <Text style={styles.amt}>{inr(item.amount)}</Text>
-              </View>
-            </Card>
+              </Card>
+            </Pressable>
           )} />
       )}
     </View>
@@ -46,4 +56,6 @@ const styles = StyleSheet.create({
   title: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface, marginTop: 2 },
   muted: { color: colors.muted, fontSize: font.sm, marginTop: 2 },
   amt: { fontSize: font.lg, fontWeight: '800', color: colors.success },
+  attachChip: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
+  attachTxt: { color: colors.brandPrimary, fontSize: 10, fontWeight: '800' },
 });

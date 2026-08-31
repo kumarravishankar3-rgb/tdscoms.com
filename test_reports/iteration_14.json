@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 14 – backend verification of Customer + Employee CRUD role permissions. 21/21 pytest tests PASSED against http://localhost:8001. Covered PUT /api/customers/{cid} (admin 200, manager 200, employee 403, admin+invalid cid 404), DELETE /api/customers/{cid} (manager 403 with existence preserved, employee 403, admin 200 with {deleted:1} + subsequent GET 404), PATCH /api/employees/{eid} (admin name update, manager name+designation update, employee 403, original restored), DELETE /api/employees/{eid} (fresh POST /api/employees by admin, manager 403, employee 403, admin 200 + GET 404) and regression /api/customers/quick duplicate-mobile 409 across all three roles.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_crud_permissions_iter14.py",
+    "/app/test_reports/pytest/iter14_permissions.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PATCH /api/employees/{eid} accepts an untyped `dict` (server.py:1263) and silently drops keys not in the allowed set. Consider a Pydantic `EmployeeUpdate` model to give clients validation errors (400) rather than silent no-op behaviour — currently sending an unknown/invalid field just returns the unmodified doc with 200.",
+    "PUT /api/customers/{cid} performs the $set update even when the id does not exist (`update_one` matches 0 docs) and only 404s after the follow-up find_one (server.py:1151-1154). Order is functionally correct here but a pre-check via `find_one` first would avoid an unnecessary write attempt and duplicate-check work for a missing cid.",
+    "DELETE /api/customers/{cid} and DELETE /api/employees/{eid} both return `{deleted: 0}` with HTTP 200 when the id does not exist (server.py:1160,1283). Not tested this iteration but worth aligning with REST conventions (404) so callers can distinguish idempotent no-op from silent miss.",
+    "POST /api/employees (server.py:1230) is guarded by require_admin_or_manager, i.e. managers CAN create employees. The review request asked to 'CHECK if it's admin-only' — reporting explicitly: it is admin+manager, not admin-only. No test failure but flagging for product decision."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_crud_permissions_iter14.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "seed_data_creation": "Test creates & cleans up its own data: 2 customers via /api/customers/quick (CustCRUD-A mobile 9997770001, CustCRUD-B mobile 9997770002), 1 employee via POST /api/employees (EmpDelTest email empdeltest-<rand>@t.com mobile 9997770003), and 1 additional customer for duplicate-mobile regression. All are deleted at the end of their scenarios. Existing first employee is patched (name/designation) and restored to original values.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend base URL http://localhost:8001. Login POST /api/auth/login -> session_token, send as `Authorization: Bearer <token>`. Role helpers in server.py: require_admin (line 908), require_admin_or_manager (line 914). Customer endpoints: PUT (line 1143, admin+mgr), DELETE (line 1158, admin). Employee endpoints: PATCH (line 1262, admin+mgr; allowed-field allow-list on line 1264), DELETE (line 1281, admin), POST (line 1230, admin+mgr). Run tests SEQUENTIALLY with `pytest -o addopts=\"\"` because pytest.ini enables xdist; the module-level STATE dict shared across classes will break under -n auto. Test file: /app/backend/tests/test_crud_permissions_iter14.py.",
+  "rca_of_issue": "N/A – all 21 permission scenarios verified green on first run."
+}

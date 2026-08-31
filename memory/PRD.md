@@ -195,3 +195,24 @@ See `/app/memory/test_credentials.md`.
 ### Testing
 - 14/14 pytest cases green in `test_reports/iteration_13.json`
 - Covers new format on both creation endpoints, monotonic increment, zero legacy TRV-CUST left, numeric search variants, and sale-invoice auto-task denorm regression
+
+---
+
+## Customer + Employee CRUD with Role Permissions — DONE 2026-08-31
+
+### Backend
+- `PUT /api/customers/{cid}` → **admin + manager** (was any user), 403 for employee
+- `DELETE /api/customers/{cid}` → **admin only** (was admin+manager)
+- `PATCH /api/employees/{eid}` (admin+manager) — expanded allowed fields to include name, email, date_of_joining (previously blocked)
+- `DELETE /api/employees/{eid}` — remains admin-only (regression-tested)
+
+### Frontend
+- **Customer** list rows (`business.tsx`) — inline Edit (admin+manager) + Delete (admin) buttons with confirm dialog
+- **Customer** detail (`customers/[id].tsx`) — header Edit + Delete icons with role gating
+- **Customer** form (`customers/new.tsx`) — supports `edit_id` param → loads existing customer, calls PUT on save, header switches to "Edit Customer"
+- **Employee** list rows (`employees/index.tsx`) — inline Edit + Delete buttons under each row (below Assign Office button)
+- **Employee** form (`employees/new.tsx`) — supports `edit_id` → loads existing, calls PATCH on save, header switches to "Edit Employee"
+- Cross-platform `confirm()` used for delete dialogs (works on web + native)
+
+### Testing
+- 21/21 pytest cases green in `test_reports/iteration_14.json` — admin/manager/employee 403 boundaries on customer PUT/DELETE + employee PATCH/DELETE, duplicate 409 regression, invalid-id 404 on all

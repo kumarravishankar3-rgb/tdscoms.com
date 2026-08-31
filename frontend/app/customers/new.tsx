@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { ScreenHeader } from '@/src/ScreenHeader';
@@ -42,11 +42,26 @@ const Section: React.FC<SectionProps> = ({ title, icon, children, defaultOpen, t
 
 export default function NewCustomer() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ edit_id?: string }>();
+  const editId = params?.edit_id || null;
+  const isEdit = !!editId;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [f, setF] = useState<F>(initial);
   const set = (k: string) => (v: string) => setF(p => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        const c: any = await api.get(`/customers/${editId}`);
+        const next: F = { ...initial };
+        Object.keys(initial).forEach(k => { if (c[k] != null) next[k] = String(c[k]); });
+        setF(next);
+      } catch (e: any) { setErr(e?.message || 'Load failed'); }
+    })();
+  }, [editId]);
 
   const save = async () => {
     const missing: string[] = [];
@@ -58,15 +73,15 @@ export default function NewCustomer() {
     if (missing.length) { setErr('Required: ' + missing.join(', ')); return; }
     setErr(null); setOk(null); setBusy(true);
     try {
-      const created = await api.post<any>('/customers', {
+      const body = {
         ...f,
         name: f.name.trim(), mobile: f.mobile.trim(), whatsapp: f.whatsapp.trim(),
         pan: f.pan.trim().toUpperCase(), aadhar: f.aadhar.trim(),
-      });
-      setOk(`Saved ✓ Customer ID: ${created.customer_code || created.id}`);
-      setTimeout(() => router.replace(`/customers/${created.id}` as any), 600);
+      };
+      const saved: any = isEdit ? await api.put(`/customers/${editId}`, body) : await api.post('/customers', body);
+      setOk(`${isEdit ? 'Updated' : 'Saved'} ✓ Customer ID: ${saved.customer_code || saved.id}`);
+      setTimeout(() => router.replace(`/customers/${saved.id}` as any), 600);
     } catch (e: any) {
-      // Try to parse structured duplicate detail
       let msg = e?.message || 'Failed';
       try {
         const parsed = typeof msg === 'string' && msg.startsWith('{') ? JSON.parse(msg) : null;
@@ -81,7 +96,7 @@ export default function NewCustomer() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary }} testID="new-customer">
-      <ScreenHeader title="Add Customer" />
+      <ScreenHeader title={isEdit ? 'Edit Customer' : 'Add Customer'} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <View style={styles.notice}>

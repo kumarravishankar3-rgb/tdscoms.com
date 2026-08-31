@@ -1,18 +1,24 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Platform, Pressable } from 'react-native';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { api, tokenStore } from '@/src/api';
 import { Card, PrimaryButton, ScreenLoader, SecondaryButton } from '@/src/ui';
 import { ScreenHeader } from '@/src/ScreenHeader';
+import { useAuth } from '@/src/AuthContext';
+import { confirm, notify } from '@/src/dialog';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const humanSize = (b: number) => b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1024 / 1024).toFixed(2)} MB`;
 
 export default function CustomerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const canEdit = isAdmin || user?.role === 'manager';
   const [c, setC] = useState<any | null>(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -75,7 +81,25 @@ export default function CustomerDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary }} testID="customer-detail">
-      <ScreenHeader title="Customer" />
+      <ScreenHeader title="Customer" right={(
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          {canEdit ? (
+            <Pressable testID="edit-cust-hdr" hitSlop={8} onPress={() => router.push({ pathname: '/customers/new', params: { edit_id: id } } as any)}>
+              <Ionicons name="create-outline" size={22} color="#B45309" />
+            </Pressable>
+          ) : null}
+          {isAdmin ? (
+            <Pressable testID="del-cust-hdr" hitSlop={8} onPress={async () => {
+              const ok = await confirm('Delete Customer?', `${c.name} delete kar diya jayega. Yeh action undo nahi ho sakta.`, { confirmText: 'Delete', destructive: true });
+              if (!ok) return;
+              try { await api.del(`/customers/${id}`); router.back(); }
+              catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+            }}>
+              <Ionicons name="trash-outline" size={22} color={colors.error} />
+            </Pressable>
+          ) : null}
+        </View>
+      )} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl }}>
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>

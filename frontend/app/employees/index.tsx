@@ -7,6 +7,7 @@ import { api, tokenStore } from '@/src/api';
 import { Avatar, Card, EmptyState, ScreenLoader, PrimaryButton } from '@/src/ui';
 import { ScreenHeader } from '@/src/ScreenHeader';
 import { useAuth } from '@/src/AuthContext';
+import { confirm, notify } from '@/src/dialog';
 
 export default function EmployeesScreen() {
   const router = useRouter();
@@ -26,6 +27,14 @@ export default function EmployeesScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const canManage = user?.role === 'admin' || user?.role === 'manager';
+  const isAdmin = user?.role === 'admin';
+
+  const remove = async (emp: any) => {
+    const ok = await confirm('Delete Employee?', `${emp.name} delete kar diya jayega. Yeh action undo nahi ho sakta.`, { confirmText: 'Delete', destructive: true });
+    if (!ok) return;
+    try { await api.del(`/employees/${emp.id}`); await load(); }
+    catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+  };
 
   const assign = async (officeId: string | null) => {
     if (!pick) return;
@@ -80,6 +89,22 @@ export default function EmployeesScreen() {
                     ) : null}
                   </View>
                 </View>
+                {canManage ? (
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 8 }}>
+                    <Pressable testID={`edit-emp-${item.id}`} onPress={() => router.push({ pathname: '/employees/new', params: { edit_id: item.id } } as any)}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingVertical: 8, borderRadius: 6 }}>
+                      <Ionicons name="create-outline" size={14} color="#B45309" />
+                      <Text style={{ color: '#B45309', fontWeight: '800', fontSize: 12 }}>Edit</Text>
+                    </Pressable>
+                    {isAdmin ? (
+                      <Pressable testID={`del-emp-${item.id}`} onPress={() => remove(item)}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#FEE2E2', paddingVertical: 8, borderRadius: 6 }}>
+                        <Ionicons name="trash-outline" size={14} color={colors.error} />
+                        <Text style={{ color: colors.error, fontWeight: '800', fontSize: 12 }}>Delete</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
               </Card>
             );
           }}

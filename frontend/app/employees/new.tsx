@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Text, Pressable, Image, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, radius, font } from '@/src/theme';
@@ -39,6 +39,9 @@ const num = (v: string) => { const n = parseFloat(v); return Number.isFinite(n) 
 
 export default function NewEmployee() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ edit_id?: string }>();
+  const editId = params?.edit_id || null;
+  const isEdit = !!editId;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -48,6 +51,18 @@ export default function NewEmployee() {
   const set = (k: string) => (v: string) => setF(p => ({ ...p, [k]: v }));
 
   useEffect(() => { (async () => { try { setOffices(await api.get<any[]>('/offices')); } catch {} })(); }, []);
+
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        const e: any = await api.get(`/employees/${editId}`);
+        const next: F = { ...initial };
+        Object.keys(initial).forEach(k => { if (e[k] != null) next[k] = String(e[k]); });
+        setF(next);
+      } catch (er: any) { setErr(er?.message || 'Load failed'); }
+    })();
+  }, [editId]);
 
   const gross = useMemo(() =>
     num(f.pay) + num(f.da) + num(f.hra) + num(f.ma) + num(f.ta) + num(f.other1) + num(f.other2)
@@ -74,20 +89,19 @@ export default function NewEmployee() {
     setErr(null); setOk(null); setBusy(true);
     try {
       const body: any = { ...f, name: f.name.trim(), email: f.email.trim() };
-      // convert numeric fields
       ['pay','da','hra','ma','ta','other1','other2','ded_epfo','ded_esic','ded_advance','ded_other'].forEach(k => { body[k] = num(f[k]); });
-      const created = await api.post<any>('/employees', body);
+      const saved: any = isEdit ? await api.patch(`/employees/${editId}`, body) : await api.post('/employees', body);
       if (photo) {
-        try { await api.uploadEmployeePhoto(created.id, photo); } catch (e: any) { console.log('photo upload failed', e); }
+        try { await api.uploadEmployeePhoto(saved.id, photo); } catch (e: any) { console.log('photo upload failed', e); }
       }
-      setOk(`Saved ✓ Employee ID: ${created.employee_code}`);
+      setOk(`${isEdit ? 'Updated' : 'Saved'} ✓ Employee ID: ${saved.employee_code}`);
       setTimeout(() => router.back(), 1000);
     } catch (e: any) { setErr(e?.message || 'Failed'); } finally { setBusy(false); }
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary }} testID="new-employee">
-      <ScreenHeader title="Add Employee" />
+      <ScreenHeader title={isEdit ? 'Edit Employee' : 'Add Employee'} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <View style={styles.notice}>

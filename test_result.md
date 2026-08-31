@@ -463,3 +463,41 @@ frontend_new_tasks:
     file: "frontend/app/tasks/[id].tsx"
     priority: medium
     needs_retesting: false
+
+# --- 2026-08-31 customer + employee edit/delete iteration ---
+
+backend_new_tasks:
+  - task: "PUT /api/customers/{cid} tightened to admin+manager (was any user)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+  - task: "DELETE /api/customers/{cid} tightened to admin-only (was admin_or_manager)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+  - task: "Employee PATCH allowed fields expanded to include name, email, date_of_joining"
+    file: "backend/server.py"
+    priority: medium
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "Business tab Customer rows have Edit (admin+manager) + Delete (admin) inline buttons"
+    file: "frontend/app/(tabs)/business.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Customer detail header has Edit + Delete with role gating"
+    file: "frontend/app/customers/[id].tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Customer form supports edit_id → loads existing + PUT on save"
+    file: "frontend/app/customers/new.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Employee list rows have Edit (admin+manager) + Delete (admin) inline buttons"
+    file: "frontend/app/employees/index.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Employee form supports edit_id → loads existing + PATCH on save"
+    file: "frontend/app/employees/new.tsx"
+    priority: high
+    needs_retesting: false

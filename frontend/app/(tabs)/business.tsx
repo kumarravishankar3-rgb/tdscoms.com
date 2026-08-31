@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { api } from '@/src/api';
 import { Avatar, Card, EmptyState, ScreenLoader, StatusBadge } from '@/src/ui';
+import { useAuth } from '@/src/AuthContext';
+import { confirm, notify } from '@/src/dialog';
 
 type Segment = 'customers' | 'accounts';
 
@@ -25,6 +27,15 @@ const daysUntil = (dateStr?: string | null): number | null => {
 
 export default function BusinessScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const canEdit = isAdmin || user?.role === 'manager';
+  const deleteCustomer = async (c: any) => {
+    const ok = await confirm('Delete Customer?', `${c.name} delete kar diya jayega. Yeh action undo nahi ho sakta.`, { confirmText: 'Delete', destructive: true });
+    if (!ok) return;
+    try { await api.del(`/customers/${c.id}`); await load(); }
+    catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+  };
   const [seg, setSeg] = useState<Segment>('customers');
   const [customers, setCustomers] = useState<any[] | null>(null);
   const [accounts, setAccounts] = useState<any[] | null>(null);
@@ -143,6 +154,24 @@ export default function BusinessScreen() {
                       ) : null}
                       {item.gst_no ? <View style={styles.gstTag}><Text style={styles.gstText}>GST</Text></View> : null}
                     </View>
+                    {(canEdit || isAdmin) ? (
+                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 8 }}>
+                        {canEdit ? (
+                          <Pressable testID={`edit-${item.id}`} onPress={(e) => { e?.stopPropagation?.(); router.push({ pathname: '/customers/new', params: { edit_id: item.id } } as any); }}
+                            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingVertical: 8, borderRadius: 6 }}>
+                            <Ionicons name="create-outline" size={14} color="#B45309" />
+                            <Text style={{ color: '#B45309', fontWeight: '800', fontSize: 12 }}>Edit</Text>
+                          </Pressable>
+                        ) : null}
+                        {isAdmin ? (
+                          <Pressable testID={`del-${item.id}`} onPress={(e) => { e?.stopPropagation?.(); deleteCustomer(item); }}
+                            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#FEE2E2', paddingVertical: 8, borderRadius: 6 }}>
+                            <Ionicons name="trash-outline" size={14} color={colors.error} />
+                            <Text style={{ color: colors.error, fontWeight: '800', fontSize: 12 }}>Delete</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </Card>
                 </Pressable>
               );

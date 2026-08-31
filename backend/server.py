@@ -1141,7 +1141,7 @@ async def get_customer(cid: str, current: User = Depends(get_current_user)):
 
 
 @api_router.put("/customers/{cid}", response_model=Customer)
-async def update_customer(cid: str, payload: CustomerInput, current: User = Depends(get_current_user)):
+async def update_customer(cid: str, payload: CustomerInput, current: User = Depends(require_admin_or_manager)):
     dup = await _find_customer_duplicate(payload.dict(), exclude_id=cid)
     if dup:
         raise HTTPException(status_code=409, detail={
@@ -1156,7 +1156,7 @@ async def update_customer(cid: str, payload: CustomerInput, current: User = Depe
 
 
 @api_router.delete("/customers/{cid}")
-async def delete_customer(cid: str, current: User = Depends(require_admin_or_manager)):
+async def delete_customer(cid: str, current: User = Depends(require_admin)):
     res = await db.customers.delete_one({"id": cid})
     return {"deleted": res.deleted_count}
 
@@ -1261,7 +1261,7 @@ async def get_employee(eid: str, current: User = Depends(get_current_user)):
 
 @api_router.patch("/employees/{eid}", response_model=Employee)
 async def update_employee(eid: str, payload: dict, current: User = Depends(require_admin_or_manager)):
-    allowed = {"office_id", "designation", "posting_branch", "role", "pay", "da", "hra", "ma", "ta", "other1", "other2", "ded_epfo", "ded_esic", "ded_advance", "ded_advance_installments", "ded_other", "mobile", "emergency_mobile", "address", "bank_account_no", "bank_ifsc", "bank_name", "account_holder_name", "pan", "aadhar", "date_of_birth", "epfo_no", "esic_no"}
+    allowed = {"name", "email", "office_id", "designation", "posting_branch", "role", "pay", "da", "hra", "ma", "ta", "other1", "other2", "ded_epfo", "ded_esic", "ded_advance", "ded_advance_installments", "ded_other", "mobile", "emergency_mobile", "address", "bank_account_no", "bank_ifsc", "bank_name", "account_holder_name", "pan", "aadhar", "date_of_birth", "date_of_joining", "epfo_no", "esic_no"}
     updates = {k: v for k, v in payload.items() if k in allowed and v is not None}
     if updates:
         # If salary fields changed, recompute gross/net

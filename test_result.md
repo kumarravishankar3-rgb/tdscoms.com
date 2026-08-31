@@ -433,3 +433,33 @@ frontend_new_tasks:
     file: "frontend/app/accounting/invoices/[id].tsx"
     priority: high
     needs_retesting: false
+
+# --- 2026-08-31 task edit / delete / bulk-delete iteration ---
+
+backend_new_tasks:
+  - task: "PATCH /api/tasks/{tid} restricted to admin+manager"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+  - task: "DELETE /api/tasks/{tid} restricted to admin only (was admin_or_manager)"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+  - task: "POST /api/tasks/bulk-delete admin-only, accepts {ids:[]}, returns {deleted:N}"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "Tasks list: selection mode, checkboxes, Select All, bulk-delete bar (admin only), Edit/Delete row buttons"
+    file: "frontend/app/(tabs)/tasks.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Tasks new.tsx: supports edit_id param → loads existing task and PATCHes on save"
+    file: "frontend/app/tasks/new.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Task detail header: Edit (admin+manager) + Delete (admin) buttons"
+    file: "frontend/app/tasks/[id].tsx"
+    priority: medium
+    needs_retesting: false

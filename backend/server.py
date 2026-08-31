@@ -1485,7 +1485,7 @@ async def get_task(tid: str, current: User = Depends(get_current_user)):
 
 
 @api_router.patch("/tasks/{tid}", response_model=Task)
-async def update_task(tid: str, payload: TaskUpdate, current: User = Depends(get_current_user)):
+async def update_task(tid: str, payload: TaskUpdate, current: User = Depends(require_admin_or_manager)):
     updates = {k: v for k, v in payload.dict().items() if v is not None}
     if "sub_tasks" in updates:
         updates["sub_tasks"] = _sub_tasks_with_ids(updates["sub_tasks"])
@@ -1605,8 +1605,21 @@ async def remove_stage(tid: str, sid: str, current: User = Depends(get_current_u
     return Task(**d)
 
 
+class BulkDeleteInput(BaseModel):
+    ids: List[str] = Field(default_factory=list)
+
+
+@api_router.post("/tasks/bulk-delete")
+async def bulk_delete_tasks(payload: BulkDeleteInput, current: User = Depends(require_admin)):
+    ids = [i for i in (payload.ids or []) if i]
+    if not ids:
+        return {"deleted": 0}
+    res = await db.tasks.delete_many({"id": {"$in": ids}})
+    return {"deleted": res.deleted_count}
+
+
 @api_router.delete("/tasks/{tid}")
-async def delete_task(tid: str, current: User = Depends(require_admin_or_manager)):
+async def delete_task(tid: str, current: User = Depends(require_admin)):
     res = await db.tasks.delete_one({"id": tid})
     return {"deleted": res.deleted_count}
 

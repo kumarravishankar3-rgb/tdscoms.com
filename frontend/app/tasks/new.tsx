@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Pressable, TextInput, Modal, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { ScreenHeader } from '@/src/ScreenHeader';
@@ -13,6 +13,9 @@ type Sub = { id: string; title: string };
 
 export default function NewTask() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ edit_id?: string }>();
+  const editId = params?.edit_id || null;
+  const isEdit = !!editId;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -45,8 +48,32 @@ export default function NewTask() {
     (async () => {
       await reloadTypes();
       try { setEmployees(await api.get<any[]>('/employees')); } catch {}
+      if (editId) {
+        try {
+          const t: any = await api.get(`/tasks/${editId}`);
+          setTitle(t.title || '');
+          setDescription(t.description || '');
+          setTypeId(t.task_type_id || '');
+          setSubs((t.sub_tasks || []).map((s: any) => ({ id: s.id || Math.random().toString(36).slice(2), title: s.title })));
+          setVoucherNo(t.voucher_no || '');
+          setVoucherDate(t.voucher_date || '');
+          setTotal(String(t.total_amount ?? ''));
+          setPaid(String(t.paid_amount ?? ''));
+          setDeadline(t.deadline || '');
+          setAssigneeId(t.assignee_id || '');
+          setAssigneeName(t.assignee_name || '');
+          setPriority(t.priority || 'medium');
+          if (t.customer_id || t.customer_name) {
+            setCustomer({
+              id: t.customer_id, name: t.customer_name || '', mobile: t.customer_mobile || '',
+              customer_code: t.customer_code || null, pan: t.customer_pan || '', aadhar: '',
+              address: t.customer_address || null,
+            } as any);
+          }
+        } catch (e: any) { Alert.alert('Load failed', e?.message || 'Unable to load'); }
+      }
     })();
-  }, []);
+  }, [editId]);
 
   const dues = useMemo(() => {
     const t = parseFloat(total || '0'), p = parseFloat(paid || '0');
@@ -76,7 +103,7 @@ export default function NewTask() {
     if (!title.trim()) { setErr('Title is required'); return; }
     setErr(null); setOk(null); setBusy(true);
     try {
-      const created = await api.post<any>('/tasks', {
+      const body = {
         title: title.trim(), description,
         task_type_id: typeId || null,
         sub_tasks: subs.map(s => ({ title: s.title, done: false })),
@@ -92,15 +119,16 @@ export default function NewTask() {
         customer_mobile: customer?.mobile || null,
         customer_pan: customer?.pan || null,
         customer_address: customer?.address || null,
-      });
-      setOk(`Saved ✓ Task ${created.task_no}`);
-      setTimeout(() => router.replace(`/tasks/${created.id}` as any), 600);
+      };
+      const saved: any = isEdit ? await api.patch(`/tasks/${editId}`, body) : await api.post('/tasks', body);
+      setOk(`Saved ✓ Task ${saved.task_no}`);
+      setTimeout(() => router.replace(`/tasks/${saved.id}` as any), 600);
     } catch (e: any) { setErr(e?.message || 'Failed'); } finally { setBusy(false); }
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary }} testID="new-task">
-      <ScreenHeader title="New Task" />
+      <ScreenHeader title={isEdit ? 'Edit Task' : 'New Task'} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <View style={styles.notice}>

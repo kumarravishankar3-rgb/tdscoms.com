@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, spacing, radius, font } from '@/src/theme';
@@ -8,12 +8,14 @@ import { api, tokenStore } from '@/src/api';
 import { Card, PrimaryButton, ScreenLoader, SecondaryButton, StatusBadge } from '@/src/ui';
 import { ScreenHeader } from '@/src/ScreenHeader';
 import { useAuth } from '@/src/AuthContext';
+import { confirm, notify } from '@/src/dialog';
 
 const MAX = 10 * 1024 * 1024;
 const humanSize = (b: number) => b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1024 / 1024).toFixed(2)} MB`;
 
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const [t, setT] = useState<any | null>(null);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -108,7 +110,25 @@ export default function TaskDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary }} testID="task-detail">
-      <ScreenHeader title={t.task_no || 'Task'} />
+      <ScreenHeader title={t.task_no || 'Task'} right={(
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          {(user?.role === 'admin' || user?.role === 'manager') ? (
+            <Pressable testID="edit-task-hdr" hitSlop={8} onPress={() => router.push({ pathname: '/tasks/new', params: { edit_id: id } } as any)}>
+              <Ionicons name="create-outline" size={22} color="#B45309" />
+            </Pressable>
+          ) : null}
+          {user?.role === 'admin' ? (
+            <Pressable testID="del-task-hdr" hitSlop={8} onPress={async () => {
+              const ok = await confirm('Delete Task?', `${t.task_no} delete kar diya jayega. Yeh action undo nahi ho sakta.`, { confirmText: 'Delete', destructive: true });
+              if (!ok) return;
+              try { await api.del(`/tasks/${id}`); router.back(); }
+              catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+            }}>
+              <Ionicons name="trash-outline" size={22} color={colors.error} />
+            </Pressable>
+          ) : null}
+        </View>
+      )} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl }}>
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>

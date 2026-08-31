@@ -1,0 +1,37 @@
+{
+  "summary": "Iter-12 verified Task Edit/Delete/Bulk-Delete role permissions. Backend: 18/18 pytest tests PASSED (test_tasks_bulk_delete_iter12.py). Frontend spot-check on Expo web preview PASSED for admin, manager and employee roles. Scenarios 1/2/3/4 all PASS. No regressions observed.",
+  "scenario_results": {
+    "1_patch_tasks_role_perms": "PASS — admin+manager 200 with title updated; employee 403 with title unchanged; invalid tid 404",
+    "2_delete_tasks_admin_only": "PASS — manager 403, employee 403 (task still exists), admin 200 {deleted:1}, follow-up GET 404",
+    "3_bulk_delete_admin_only": "PASS — manager 403, employee 403 (all 3 intact); admin 200 {deleted:2} c1/c2 gone c3 alive; empty {ids:[]} → {deleted:0}; nonexistent ids → {deleted:0}; c3 cleanup delete 1",
+    "4_route_ordering": "PASS — POST /api/tasks/bulk-delete with {ids:[]} returned 200 {deleted:0}; route not shadowed by /{tid} or /{tid}/attachments",
+    "frontend_admin": "PASS — enter-select visible, bulk-bar appears, row check-<id> renders, tap 2 → '2 selected' header, bulk-delete enabled; select-all selects entire filtered set (71 tasks incl. off-screen virtualized) and toggles back to 0; exit-select removes bulk-bar; row edit-<id>/del-<id> visible; tap edit-<id> navigates to /tasks/new?edit_id=<id>, header 'Edit Task' shown, in-title pre-filled with existing title (UI-Iter12-Task-C)",
+    "frontend_employee": "PASS — enter-select NOT rendered; edit-<taskId>/del-<taskId> NOT rendered on any row",
+    "frontend_manager": "PASS — enter-select NOT rendered; edit-<taskId> IS rendered on rows; del-<taskId> NOT rendered"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_tasks_bulk_delete_iter12.py",
+    "/app/test_reports/pytest/iter12_tasks.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Route ordering in server.py is correct: POST /api/tasks/bulk-delete (line 1612) is registered BEFORE DELETE /api/tasks/{tid} (line 1621) and POST /api/tasks/{tid}/attachments (line 1627), preventing collision.",
+    "bulk_delete_tasks correctly filters out empty ids and returns {deleted:0} for empty/nonexistent inputs — safe no-op behaviour matches spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tasks_bulk_delete_iter12.py"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% (all spot-checks passed for admin/manager/employee)"},
+  "seed_data_creation": "Backend tests self-clean their created tasks (BulkTest-Iter12-A/B, BulkTest-C1/C2/C3). UI spot-check seeded 3 tasks (UI-Iter12-Task-A/B/C) which were subsequently deleted via API cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For future tests: (1) After admin login, to log out via UI you must first navigate to the /tabs/dashboard (or home) — the More tab click can fail from a detail screen like /tasks/new. Alternate approach used here: navigate directly to /login and localStorage.clear() before login. (2) Playwright counts of testID^=\"check-tsk_\" reflect only currently rendered FlatList rows (~46), while 'select-all' selects the entire filtered dataset in state (71 in DB) — so header count > rendered checkbox count is expected, not a bug. (3) React Native <Pressable disabled={...}> on web renders opacity but no HTML disabled attr — Playwright .is_disabled() may return False even when logically disabled; assert via style/opacity or by clicking + observing no-op.",
+  "rca_of_issue": "N/A — feature under review works correctly end-to-end."
+}

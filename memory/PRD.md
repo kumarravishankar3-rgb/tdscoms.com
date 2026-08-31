@@ -147,3 +147,26 @@ See `/app/memory/test_credentials.md`.
 ### Testing
 - 18/18 pytest cases green in `test_reports/iteration_7.json`
 - Covers: 5 payment modes + default, POST persistence, PATCH full-pay + item add + recalc, 404 guards, **403 role guard live-tested with employee@triveni.com**, PDF via both Bearer + ?token, PDF for employee (Print allowed), missing/invalid token → 401
+
+---
+
+## Task Module: Edit / Delete / Bulk Delete — DONE 2026-08-31
+
+### Backend
+- `PATCH /api/tasks/{tid}` → **admin + manager** only (403 for employee)
+- `DELETE /api/tasks/{tid}` → **admin only** (was admin+manager, tightened)
+- `POST /api/tasks/bulk-delete` → **admin only**, body `{ids:[...]}`, returns `{deleted:N}`; empty & non-existent ids handled safely
+
+### Frontend
+- Tasks tab (`/(tabs)/tasks.tsx`) now has:
+  - Header checkbox icon (admin only) → enters selection mode
+  - Long-press any row → also enters selection mode with that row pre-selected
+  - Per-row checkboxes + Select All / Deselect All toggle in header
+  - Bottom bar with Cancel + `Delete Selected (N)` (admin only, disabled at 0)
+  - Row-level Edit (`admin+manager`) and Delete (`admin`) inline buttons
+- Task detail header (`/tasks/[id].tsx`): Edit + Delete buttons with role gating
+- Task new form (`/tasks/new.tsx`) now supports `edit_id` param → loads existing task and calls `PATCH` on save; header switches to "Edit Task"
+
+### Testing
+- 18/18 pytest cases green in `test_reports/iteration_12.json`
+- Frontend role visibility spot-check: admin sees everything, manager sees Edit only, employee sees no admin controls

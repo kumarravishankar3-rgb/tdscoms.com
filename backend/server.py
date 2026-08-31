@@ -122,7 +122,7 @@ class AuthResponse(BaseModel):
 
 class Customer(BaseModel):
     id: str = Field(default_factory=lambda: new_id("cus"))
-    customer_code: Optional[str] = None  # auto TRV-CUST-0001
+    customer_code: Optional[str] = None  # auto TDSC-CUST-ID-00000001
 
     # Basic (mandatory: name, mobile, whatsapp, pan, aadhar)
     name: str  # Contractor name
@@ -1041,7 +1041,7 @@ async def create_customer(payload: CustomerInput, current: User = Depends(get_cu
             },
         })
 
-    # Atomically increment counter to build unique customer_code like TRV-CUST-0001
+    # Atomically increment counter to build unique customer_code like TDSC-CUST-ID-00000001
     counter = await db.counters.find_one_and_update(
         {"_id": "customer_code"},
         {"$inc": {"seq": 1}},
@@ -1049,7 +1049,7 @@ async def create_customer(payload: CustomerInput, current: User = Depends(get_cu
         return_document=ReturnDocument.AFTER,
     )
     seq = (counter or {}).get("seq") or 1
-    code = f"TRV-CUST-{seq:04d}"
+    code = f"TDSC-CUST-ID-{seq:08d}"
 
     c = Customer(**payload.dict(), customer_code=code, created_by=current.user_id)
     await db.customers.insert_one(c.dict())
@@ -1091,7 +1091,7 @@ async def quick_add_party(payload: QuickPartyInput, current: User = Depends(get_
         {"_id": "customer_code"}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER,
     )
     seq = (counter or {}).get("seq") or 1
-    code = f"TRV-CUST-{seq:04d}"
+    code = f"TDSC-CUST-ID-{seq:08d}"
     c = Customer(
         name=body["name"].strip(), mobile=body["mobile"].strip(), whatsapp=body["whatsapp"].strip(),
         pan=body["pan"], aadhar=body["aadhar"], email=body.get("email"), gst_no=body.get("gst_no"),
@@ -1103,18 +1103,25 @@ async def quick_add_party(payload: QuickPartyInput, current: User = Depends(get_
 
 @api_router.get("/customers/search", response_model=List[Customer])
 async def search_customers(q: str = "", limit: int = 25, current: User = Depends(get_current_user)):
-    """Search customers by any of: name, customer_code, mobile, whatsapp, PAN, Aadhar, email, GST no, contractor_reg_no."""
+    """Search customers by any of: name, customer_code, mobile, whatsapp, PAN, Aadhar, email, GST no, contractor_reg_no.
+
+    Special handling: if the query is a pure integer or padded number (e.g. "56" or "00000056"),
+    we ALSO search the padded 8-digit form so the customer_code TDSC-CUST-ID-00000056 is found."""
     s = (q or "").strip()
     if not s:
         docs = await db.customers.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
         return [Customer(**d) for d in docs]
-    # case-insensitive regex on multiple fields
     import re
     rx = {"$regex": re.escape(s), "$options": "i"}
-    query = {"$or": [
+    or_clauses = [
         {"name": rx}, {"customer_code": rx}, {"mobile": rx}, {"whatsapp": rx},
         {"pan": rx}, {"aadhar": rx}, {"email": rx}, {"gst_no": rx}, {"contractor_reg_no": rx},
-    ]}
+    ]
+    # If query is purely digits, also match zero-padded 8-digit form on customer_code
+    if s.isdigit():
+        padded = s.zfill(8)
+        or_clauses.append({"customer_code": {"$regex": re.escape(padded), "$options": "i"}})
+    query = {"$or": or_clauses}
     docs = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return [Customer(**d) for d in docs]
 
@@ -2894,6 +2901,34 @@ async def startup():
         await db.tenders.create_index("id", unique=True)
         await db.attendance.create_index("id", unique=True)
         await db.leaves.create_index("id", unique=True)
+
+        # Migration: TRV-CUST-XXXX → TDSC-CUST-ID-00000XXX (8-digit padded)
+        try:
+            cursor = db.customers.find({"customer_code": {"$regex": "^TRV-CUST-"}}, {"_id": 0, "id": 1, "customer_code": 1})
+            legacy = await cursor.to_list(10000)
+            max_seq = 0
+            migrated = 0
+            for c in legacy:
+                old = c.get("customer_code") or ""
+                try:
+                    seq = int(old.rsplit("-", 1)[-1])
+                except Exception:
+                    continue
+                if seq > max_seq: max_seq = seq
+                new_code = f"TDSC-CUST-ID-{seq:08d}"
+                await db.customers.update_one({"id": c["id"]}, {"$set": {"customer_code": new_code}})
+                # Also propagate to tasks with denormalised customer_code
+                await db.tasks.update_many({"customer_code": old}, {"$set": {"customer_code": new_code}})
+                migrated += 1
+            if migrated > 0:
+                # Bump counter so future codes continue from max_seq
+                counter_doc = await db.counters.find_one({"_id": "customer_code"}, {"_id": 0}) or {}
+                current_seq = int(counter_doc.get("seq") or 0)
+                if current_seq < max_seq:
+                    await db.counters.update_one({"_id": "customer_code"}, {"$set": {"seq": max_seq}}, upsert=True)
+                logger.info("Migrated %d customer_codes from TRV-CUST-* to TDSC-CUST-ID-* format", migrated)
+        except Exception as _e:
+            logger.exception("Customer code migration failed: %s", _e)
 
         # Seed admin
         admin_email = "admin@triveni.com"

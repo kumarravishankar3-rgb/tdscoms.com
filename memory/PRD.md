@@ -170,3 +170,28 @@ See `/app/memory/test_credentials.md`.
 ### Testing
 - 18/18 pytest cases green in `test_reports/iteration_12.json`
 - Frontend role visibility spot-check: admin sees everything, manager sees Edit only, employee sees no admin controls
+
+---
+
+## Customer ID Format Change — DONE 2026-08-31
+
+### Format
+- **Old**: `TRV-CUST-0056` (4-digit)
+- **New**: `TDSC-CUST-ID-00000056` (8-digit zero-padded)
+- Prefix change applies to future customers AND back-fills existing 52 customer records
+
+### Backend
+- `POST /api/customers` and `POST /api/customers/quick` now emit `TDSC-CUST-ID-{seq:08d}`
+- Startup migration: rewrites every `TRV-CUST-XXXX` → `TDSC-CUST-ID-<8-padded>`, preserving the sequence number
+- Also propagates new codes to denormalised `customer_code` field on Task rows (auto-task and manual)
+- Counter bumped to max existing seq so future codes continue monotonically
+
+### Search enhancement
+- `GET /api/customers/search?q=`
+  - Plain integer like `q=56` → matches `TDSC-CUST-ID-00000056` (adds an explicit zero-padded 8-digit regex clause to the $or query)
+  - Full padded number `q=00000056` → matches exactly one customer
+  - Existing multi-field search (name, mobile, PAN, Aadhar, email, GST, reg-no) unchanged
+
+### Testing
+- 14/14 pytest cases green in `test_reports/iteration_13.json`
+- Covers new format on both creation endpoints, monotonic increment, zero legacy TRV-CUST left, numeric search variants, and sale-invoice auto-task denorm regression

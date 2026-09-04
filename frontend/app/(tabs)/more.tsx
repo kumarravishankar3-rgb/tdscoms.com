@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,8 +8,30 @@ import { useAuth } from '@/src/AuthContext';
 import { Avatar } from '@/src/ui';
 
 export default function MoreScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const router = useRouter();
+
+  const confirmDelete = () => {
+    const doDelete = async () => {
+      try {
+        await deleteAccount();
+      } catch (e: any) {
+        const msg = e?.message || 'Failed to delete account. Please try again.';
+        if (Platform.OS === 'web') window.alert(msg);
+        else Alert.alert('Delete failed', msg);
+      }
+    };
+    const title = 'Delete Account?';
+    const message = 'This will permanently delete your account and sign you out. Your business data (tasks, invoices you created) will be retained by the organisation but your personal login will be removed. This action cannot be undone.';
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${message}`)) doDelete();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: doDelete },
+    ]);
+  };
 
   const rows = [
     { icon: 'wallet', label: 'Accounting', route: '/accounting/menu', color: colors.success, testID: 'row-accounting' },
@@ -84,6 +106,13 @@ export default function MoreScreen() {
           <Ionicons name="log-out-outline" size={20} color={colors.error} />
           <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
+
+        {user?.role !== 'admin' && (
+          <Pressable testID="delete-account-btn" style={styles.deleteAcc} onPress={confirmDelete}>
+            <Ionicons name="trash-outline" size={18} color={colors.muted} />
+            <Text style={styles.deleteAccText}>Delete My Account</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -104,4 +133,6 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted, fontSize: font.sm, marginTop: 2 },
   logout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: spacing.lg, marginTop: spacing.xl, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.error + '10', borderWidth: 1, borderColor: colors.error + '30' },
   logoutText: { color: colors.error, fontWeight: '700', fontSize: font.lg },
+  deleteAcc: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginHorizontal: spacing.lg, marginTop: spacing.md, padding: spacing.md },
+  deleteAccText: { color: colors.muted, fontWeight: '600', fontSize: font.sm, textDecorationLine: 'underline' },
 });

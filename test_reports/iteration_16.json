@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 16 – Deployment blocker fix verified. 11/11 pytest tests PASSED against http://localhost:8001 in 1.13s. (1) GET /health -> 200 {\"status\":\"ok\"} and (2) GET /api/health -> 200 {\"status\":\"ok\"} both work – deployment liveness 404 fixed. (3) Auth regression: POST /api/auth/login with admin@triveni.com/Admin@123 -> 200 with session_token (>=16 chars), user.role='admin'; /auth/me works with that token; wrong password -> 401. (4) POST /api/auth/session with fake session_id -> 401 {'detail':'Invalid session'} within timeout, proving the default upstream (EMERGENT_AUTH_BASE_URL unset -> https://demobackend.emergentagent.com) is reachable, called, and correctly rejects invalid sessions (no 500 / no ConnectionError); missing session_id -> 422. (5) Iteration_15 regressions still green: GET /api/customers/{cid}/pdf returns application/pdf, Content-Disposition inline with TDSC-CUST-ID-XXXXXXXX.pdf filename, %PDF- magic + >2 KB body, 401 without token; POST /api/customers/bulk-delete admin flow deletes {ids:[c1,c2]} -> {deleted:2} with both cids returning 404 after, manager -> 403.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_health_and_auth_iter16.py",
+    "/app/test_reports/pytest/iter16_health_auth.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:2925 – bare GET /health (no /api prefix) is exposed on the ASGI app so K8s liveness/readiness probes hitting the pod port directly succeed, but this route is NOT accessible through the ingress (which forwards only /api/* to backend). That is fine for probes but worth documenting so future readers don't assume public reachability.",
+    "server.py:955 – EMERGENT_AUTH_BASE_URL env var is read on every request. Consider caching at module load or falling back gracefully on ConnectTimeout (currently a slow upstream would surface as 30 s timeout -> 500). Non-blocking; today the default upstream responds within a few seconds.",
+    "test_health_and_auth_iter16.py raised a PytestRemovedIn10Warning about class-scoped fixture defined as instance method – cosmetic, tests pass; will migrate to @classmethod in a future iteration if the pattern is reused."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_health_and_auth_iter16.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "seed_data_creation": "TestIter15Regression.test_bulk_delete_admin_flow creates 2 quick customers (Iter16Regress-1/2, mobiles 9111100081/82) and bulk-deletes them within the same test; if pre-existing duplicates are detected via 409 the test removes them first for a clean slate. No residual data after the run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend base http://localhost:8001. Health probes: GET /health (app root, server.py:2925) and GET /api/health (server.py:2920) both return {status:'ok'}. Emergent session exchange: server.py:955 – base = os.environ.get('EMERGENT_AUTH_BASE_URL', 'https://demobackend.emergentagent.com').rstrip('/'); default upstream is reachable from the container – fake session_id returns 401 'Invalid session' in <5 s. Login: POST /api/auth/login {email,password} -> {session_token,user}; admin@triveni.com/Admin@123 is guaranteed by startup seed. Regression tests re-use iter15 patterns – see /app/backend/tests/test_customer_pdf_bulk_iter15.py for full coverage of PDF + bulk-delete + role-gates. Run with `pytest -o addopts=\"\"` because pytest.ini enables xdist and STATE dicts are shared across classes in these files.",
+  "rca_of_issue": "N/A – verification-only iteration. All five requested checks passed on first run: deployment blocker for liveness probes (404 on /health) is resolved by the two new endpoints, and the env-driven EMERGENT_AUTH_BASE_URL default fallback is confirmed functional with the upstream still being called and rejecting invalid sessions with 401."
+}

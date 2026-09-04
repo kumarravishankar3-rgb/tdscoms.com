@@ -93,12 +93,14 @@ export default function LoginScreen() {
               <Text style={styles.googleText}>Continue with Google</Text>
             </Pressable>
 
-            <View style={styles.demoBox}>
-              <Text style={styles.demoTitle}>Demo credentials</Text>
-              <Text style={styles.demoText}>Admin: admin@triveni.com / Admin@123</Text>
-              <Text style={styles.demoText}>Manager: manager@triveni.com / Manager@123</Text>
-              <Text style={styles.demoText}>Employee: employee@triveni.com / Employee@123</Text>
-            </View>
+            {String(process.env.EXPO_PUBLIC_SHOW_DEMO_CREDS || 'true').toLowerCase() === 'true' ? (
+              <View style={styles.demoBox}>
+                <Text style={styles.demoTitle}>Demo credentials</Text>
+                <Text style={styles.demoText}>Admin: admin@triveni.com / Admin@123</Text>
+                <Text style={styles.demoText}>Manager: manager@triveni.com / Manager@123</Text>
+                <Text style={styles.demoText}>Employee: employee@triveni.com / Employee@123</Text>
+              </View>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

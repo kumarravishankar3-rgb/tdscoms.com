@@ -243,3 +243,27 @@ See `/app/memory/test_credentials.md`.
 
 ### Testing
 - 21/21 pytest cases green (`test_reports/iteration_15.json`) — PDF for all 3 roles, both auth methods, missing/invalid token → 401, invalid cid → 404, bulk-delete role guard for manager/employee/admin, empty & non-existent ids no-op, regression on iter_14 role gates
+
+
+---
+
+## Deployment Readiness Hardening — DONE 2026-06-15
+
+### Backend
+- Global `GET /health` on the app instance → `{"status":"ok"}` (was under `/api` prefix, causing deploy probe 404).
+- Removed hardcoded fallback for `EMERGENT_AUTH_BASE_URL` in `/auth/session` — env-driven, 500 if missing.
+- Removed hardcoded fallback for `INTEGRATION_PROXY_URL` (Object Storage base) — env-driven, warning logged if missing.
+- `SEED_DEMO_ACCOUNTS` default flipped to `false`; when enabled, seed only proceeds if per-role `SEED_*_PASSWORD` env vars are provided (no source-code fallback passwords).
+- Backend `/app/backend/.env` now carries preview values for `EMERGENT_AUTH_BASE_URL`, `INTEGRATION_PROXY_URL`, and all `SEED_*_PASSWORD` variables so preview builds keep working.
+
+### App-Store Compliance — In-app Account Deletion
+- Backend: `DELETE /api/auth/me` (authenticated). Blocks admin self-delete (prevents tenant lockout), deletes session tokens, deletes user doc, anonymizes any linked employee row.
+- Frontend: "Delete My Account" link on More tab (non-admin roles only), native confirmation dialog with data-retention explanation. `deleteAccount()` added to `AuthContext`.
+- Verified via curl: admin 400, employee 200, subsequent login 401.
+
+### Deployment agent output
+- Status: **warn** (all BLOCKERs cleared; `expo_store_ready: true`, `compilation_passed: true`, `backend_port_8001: true`).
+- Remaining WARN items are non-blocking N+1 query optimizations for `/accounting/dashboard` and `/payroll` — safe to defer.
+
+### Test credentials (unchanged)
+- Admin: `admin@triveni.com` / `Admin@123` (see `/app/memory/test_credentials.md`)

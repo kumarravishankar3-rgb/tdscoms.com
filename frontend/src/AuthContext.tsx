@@ -13,6 +13,7 @@ interface AuthState {
   signup: (email: string, password: string, name: string, role?: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -109,7 +110,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const redirect = Platform.OS === 'web'
       ? window.location.origin + '/'
       : Linking.createURL('');
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirect)}`;
+    const rawAuthBase = process.env.EXPO_PUBLIC_AUTH_BASE_URL;
+    if (!rawAuthBase) {
+      throw new Error('EXPO_PUBLIC_AUTH_BASE_URL is not configured. Set it in /app/frontend/.env.');
+    }
+    const authBase = rawAuthBase.replace(/\/$/, '');
+    const authUrl = `${authBase}/?redirect=${encodeURIComponent(redirect)}`;
     if (Platform.OS === 'web') {
       window.location.href = authUrl;
       return;
@@ -131,11 +137,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    await api.del('/auth/me');
+    await tokenStore.clear();
+    setUser(null);
+  }, []);
+
   const refresh = useCallback(async () => {
     await checkExisting();
   }, [checkExisting]);
 
-  const value = useMemo(() => ({ user, loading, loginEmail, signup, loginGoogle, logout, refresh }), [user, loading, loginEmail, signup, loginGoogle, logout, refresh]);
+  const value = useMemo(() => ({ user, loading, loginEmail, signup, loginGoogle, logout, deleteAccount, refresh }), [user, loading, loginEmail, signup, loginGoogle, logout, deleteAccount, refresh]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 };

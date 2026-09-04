@@ -30,8 +30,11 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # ============ Object Storage ============
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip().rstrip("/")
+if not STORAGE_BASE:
+    logger_boot = logging.getLogger(__name__)
+    logger_boot.warning("INTEGRATION_PROXY_URL not configured — object storage will fail until set")
+STORAGE_URL = (STORAGE_BASE + "/objstore/api/v1/storage") if STORAGE_BASE else ""
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "triveni-business-manager"
 _storage_key: Optional[str] = None
@@ -952,9 +955,12 @@ async def login(payload: LoginInput):
 
 @api_router.post("/auth/session", response_model=AuthResponse)
 async def exchange_session(payload: SessionExchangeInput):
+    base = (os.environ.get("EMERGENT_AUTH_BASE_URL") or "").rstrip("/")
+    if not base:
+        raise HTTPException(status_code=500, detail="EMERGENT_AUTH_BASE_URL not configured")
     async with httpx.AsyncClient(timeout=30) as hx:
         r = await hx.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+            f"{base}/auth/v1/env/oauth/session-data",
             headers={"X-Session-ID": payload.session_id},
         )
     if r.status_code != 200:
@@ -995,6 +1001,34 @@ async def logout(authorization: Optional[str] = Header(None)):
         token = authorization.split(" ", 1)[1].strip()
         await db.user_sessions.delete_one({"session_token": token})
     return {"ok": True}
+
+
+@api_router.delete("/auth/me")
+async def delete_my_account(current: User = Depends(get_current_user)):
+    """Self-service account deletion (App Store / Play Store compliance).
+    Removes the user, their sessions, and anonymizes personally-identifiable
+    references so their business data (tasks, invoices) does not orphan.
+    Admins cannot self-delete via this endpoint to avoid locking the tenant out.
+    """
+    if current.role == "admin":
+        # Prevent lockout — an admin must be removed by another admin.
+        raise HTTPException(status_code=400, detail="Admin accounts cannot self-delete. Please contact another admin.")
+    uid = current.user_id
+    email = current.email
+    # Delete auth sessions
+    await db.user_sessions.delete_many({"user_id": uid})
+    # Delete user document
+    await db.users.delete_one({"user_id": uid})
+    # Anonymize employee link if present
+    try:
+        await db.employees.update_many(
+            {"user_id": uid},
+            {"$set": {"user_id": None, "status": "inactive", "deleted_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    except Exception:
+        pass
+    logger.info("Account deleted (self-service): %s / %s", uid, email)
+    return {"ok": True, "deleted": True}
 
 
 # ============ Customers ============
@@ -2916,6 +2950,16 @@ async def root():
     return {"service": "Triveni Business Manager API", "status": "ok"}
 
 
+@api_router.get("/health")
+async def api_health():
+    return {"status": "ok"}
+
+
+@app.get("/health")
+async def app_health():
+    return {"status": "ok"}
+
+
 # ============ Startup ============
 @app.on_event("startup")
 async def startup():
@@ -2961,30 +3005,36 @@ async def startup():
         except Exception as _e:
             logger.exception("Customer code migration failed: %s", _e)
 
-        # Seed admin
-        admin_email = "admin@triveni.com"
-        if not await db.users.find_one({"email": admin_email}):
-            admin = User(user_id=new_id("usr"), email=admin_email, name="Triveni Admin", role="admin")
-            doc = admin.dict()
-            doc["password_hash"] = hash_password("Admin@123")
-            await db.users.insert_one(doc)
-            logger.info("Seeded admin user")
+        # Seed demo accounts — controlled by SEED_DEMO_ACCOUNTS env var.
+        # Disabled by default in production. Enable only in preview environments by
+        # setting SEED_DEMO_ACCOUNTS=true AND providing SEED_*_PASSWORD values via env.
+        if os.environ.get("SEED_DEMO_ACCOUNTS", "false").lower() in ("1", "true", "yes"):
+            admin_email = os.environ.get("SEED_ADMIN_EMAIL", "admin@triveni.com")
+            admin_pass = os.environ.get("SEED_ADMIN_PASSWORD")
+            if admin_pass and not await db.users.find_one({"email": admin_email}):
+                admin = User(user_id=new_id("usr"), email=admin_email, name="Triveni Admin", role="admin")
+                doc = admin.dict()
+                doc["password_hash"] = hash_password(admin_pass)
+                await db.users.insert_one(doc)
+                logger.info("Seeded admin user")
 
-        # Seed a manager
-        mgr_email = "manager@triveni.com"
-        if not await db.users.find_one({"email": mgr_email}):
-            mgr = User(user_id=new_id("usr"), email=mgr_email, name="Ravi Manager", role="manager")
-            doc = mgr.dict()
-            doc["password_hash"] = hash_password("Manager@123")
-            await db.users.insert_one(doc)
+            mgr_email = os.environ.get("SEED_MANAGER_EMAIL", "manager@triveni.com")
+            mgr_pass = os.environ.get("SEED_MANAGER_PASSWORD")
+            if mgr_pass and not await db.users.find_one({"email": mgr_email}):
+                mgr = User(user_id=new_id("usr"), email=mgr_email, name="Ravi Manager", role="manager")
+                doc = mgr.dict()
+                doc["password_hash"] = hash_password(mgr_pass)
+                await db.users.insert_one(doc)
 
-        # Seed an employee
-        emp_email = "employee@triveni.com"
-        if not await db.users.find_one({"email": emp_email}):
-            emp = User(user_id=new_id("usr"), email=emp_email, name="Anita Employee", role="employee")
-            doc = emp.dict()
-            doc["password_hash"] = hash_password("Employee@123")
-            await db.users.insert_one(doc)
+            emp_email = os.environ.get("SEED_EMPLOYEE_EMAIL", "employee@triveni.com")
+            emp_pass = os.environ.get("SEED_EMPLOYEE_PASSWORD")
+            if emp_pass and not await db.users.find_one({"email": emp_email}):
+                emp = User(user_id=new_id("usr"), email=emp_email, name="Anita Employee", role="employee")
+                doc = emp.dict()
+                doc["password_hash"] = hash_password(emp_pass)
+                await db.users.insert_one(doc)
+        else:
+            logger.info("SEED_DEMO_ACCOUNTS disabled — skipping demo user seeding")
 
         try:
             await run_in_threadpool(init_storage)

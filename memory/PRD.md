@@ -216,3 +216,30 @@ See `/app/memory/test_credentials.md`.
 
 ### Testing
 - 21/21 pytest cases green in `test_reports/iteration_14.json` — admin/manager/employee 403 boundaries on customer PUT/DELETE + employee PATCH/DELETE, duplicate 409 regression, invalid-id 404 on all
+
+---
+
+## Customer Print PDF + Bulk Delete — DONE 2026-08-31
+
+### Backend
+- `GET /api/customers/{cid}/pdf` — any authenticated user, generates 7-section profile card:
+  1. Personal & Contact
+  2. Address
+  3. KYC & Identity (PAN/Aadhar/Voter/DL/Passport/GSTIN)
+  4. Business & Registration (firm, contractor reg no, class, dept, dates)
+  5. Banking (bank, IFSC, A/C, holder)
+  6. DSC / Digital signature (serial, dates, class, CA, token)
+  7. Notes / Remarks
+- Supports Bearer header OR `?token=` query
+- `POST /api/customers/bulk-delete` — admin only, `{ids:[]}` → `{deleted:N}` (safe on empty / non-existent)
+
+### Frontend
+- Business tab (`(tabs)/business.tsx`):
+  - **Print** button on every customer row (all roles) — opens PDF in browser tab / native viewer
+  - Selection mode toggle icon in header (admin only) — long-press any row also enters mode
+  - Per-row checkbox + Select All / Deselect toggle + live "N selected" counter
+  - Bottom bar with Cancel + Delete Selected (N) (admin only)
+- Customer detail header (`customers/[id].tsx`): Print button added alongside Edit + Delete
+
+### Testing
+- 21/21 pytest cases green (`test_reports/iteration_15.json`) — PDF for all 3 roles, both auth methods, missing/invalid token → 401, invalid cid → 404, bulk-delete role guard for manager/employee/admin, empty & non-existent ids no-op, regression on iter_14 role gates

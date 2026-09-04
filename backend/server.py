@@ -14,6 +14,7 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException, Header, UploadFi
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 from invoice_pdf import build_invoice_pdf
+from customer_pdf import build_customer_pdf
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, EmailStr
@@ -1153,6 +1154,36 @@ async def update_customer(cid: str, payload: CustomerInput, current: User = Depe
     if not d:
         raise HTTPException(status_code=404, detail="Not found")
     return Customer(**d)
+
+
+@api_router.post("/customers/bulk-delete")
+async def bulk_delete_customers(payload: dict, current: User = Depends(require_admin)):
+    ids = [i for i in (payload.get("ids") or []) if i]
+    if not ids:
+        return {"deleted": 0}
+    res = await db.customers.delete_many({"id": {"$in": ids}})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.get("/customers/{cid}/pdf")
+async def get_customer_pdf(cid: str, token: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    tk = None
+    if authorization and authorization.startswith("Bearer "):
+        tk = authorization[7:]
+    elif token:
+        tk = token
+    if not tk:
+        raise HTTPException(status_code=401, detail="Auth required")
+    session = await db.user_sessions.find_one({"session_token": tk}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    c = await db.customers.find_one({"id": cid}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    pdf_bytes = await run_in_threadpool(build_customer_pdf, c)
+    fname = f"{(c.get('customer_code') or 'customer').replace(' ', '_')}.pdf"
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                   headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
 
 @api_router.delete("/customers/{cid}")

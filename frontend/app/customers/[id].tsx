@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Platform, Pressable, Linking } from 'react-native';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -83,6 +83,15 @@ export default function CustomerDetail() {
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary }} testID="customer-detail">
       <ScreenHeader title="Customer" right={(
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <Pressable testID="print-cust-hdr" hitSlop={8} onPress={async () => {
+            try {
+              const url = await api.customerPdfUrl(id);
+              if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
+              else await Linking.openURL(url);
+            } catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+          }}>
+            <Ionicons name="print" size={22} color={colors.brandPrimary} />
+          </Pressable>
           {canEdit ? (
             <Pressable testID="edit-cust-hdr" hitSlop={8} onPress={() => router.push({ pathname: '/customers/new', params: { edit_id: id } } as any)}>
               <Ionicons name="create-outline" size={22} color="#B45309" />

@@ -501,3 +501,25 @@ frontend_new_tasks:
     file: "frontend/app/employees/new.tsx"
     priority: high
     needs_retesting: false
+
+# --- 2026-08-31 customer print PDF + bulk delete iteration ---
+
+backend_new_tasks:
+  - task: "GET /api/customers/{cid}/pdf — generates full profile PDF (39 fields), auth via header OR ?token=. Any logged-in user allowed."
+    file: "backend/customer_pdf.py + backend/server.py"
+    priority: high
+    needs_retesting: true
+  - task: "POST /api/customers/bulk-delete admin-only, body {ids:[]}, returns {deleted:N}"
+    file: "backend/server.py"
+    priority: high
+    needs_retesting: true
+
+frontend_new_tasks:
+  - task: "Business tab: Print button in customer row (all roles), selection mode + Select All + bulk-delete bar (admin), long-press to enter select mode"
+    file: "frontend/app/(tabs)/business.tsx"
+    priority: high
+    needs_retesting: false
+  - task: "Customer detail header: Print button (all roles)"
+    file: "frontend/app/customers/[id].tsx"
+    priority: high
+    needs_retesting: false

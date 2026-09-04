@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, TextInput, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,11 +30,34 @@ export default function BusinessScreen() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const canEdit = isAdmin || user?.role === 'manager';
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [busyBulk, setBusyBulk] = useState(false);
+  const selectedCount = useMemo(() => Object.values(selected).filter(Boolean).length, [selected]);
+  const toggleSel = (id: string) => setSelected(p => ({ ...p, [id]: !p[id] }));
+  const exitSelect = () => { setSelectMode(false); setSelected({}); };
+  const printCustomer = async (c: any) => {
+    try {
+      const url = await api.customerPdfUrl(c.id);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
+      else await Linking.openURL(url);
+    } catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+  };
   const deleteCustomer = async (c: any) => {
     const ok = await confirm('Delete Customer?', `${c.name} delete kar diya jayega. Yeh action undo nahi ho sakta.`, { confirmText: 'Delete', destructive: true });
     if (!ok) return;
     try { await api.del(`/customers/${c.id}`); await load(); }
     catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+  };
+  const bulkDelete = async () => {
+    const ids = Object.keys(selected).filter(k => selected[k]);
+    if (ids.length === 0) return;
+    const ok = await confirm('Delete Selected?', `${ids.length} customers permanently delete kar diye jayenge.`, { confirmText: 'Delete All', destructive: true });
+    if (!ok) return;
+    setBusyBulk(true);
+    try { const res: any = await api.post('/customers/bulk-delete', { ids }); notify('Deleted', `${res?.deleted || 0} customers deleted`); exitSelect(); await load(); }
+    catch (e: any) { notify('Failed', e?.message || 'Try again'); }
+    finally { setBusyBulk(false); }
   };
   const [seg, setSeg] = useState<Segment>('customers');
   const [customers, setCustomers] = useState<any[] | null>(null);
@@ -78,16 +101,44 @@ export default function BusinessScreen() {
   }, [accounts, q]);
 
   return (
+    <>
     <SafeAreaView edges={['top']} style={styles.root} testID="business-screen">
       <View style={styles.header}>
-        <Text style={styles.h1}>Business</Text>
-        <Pressable
-          testID="add-btn"
-          style={styles.addBtn}
-          onPress={() => router.push(seg === 'customers' ? '/customers/new' as any : '/accounts/new' as any)}
-        >
-          <Ionicons name="add" size={22} color={colors.onBrandPrimary} />
-        </Pressable>
+        {selectMode ? (
+          <>
+            <Pressable onPress={exitSelect} testID="exit-select" hitSlop={10}><Ionicons name="close" size={26} color={colors.onSurface} /></Pressable>
+            <Text style={[styles.h1, { flex: 1, marginLeft: 12 }]}>{selectedCount} selected</Text>
+            <Pressable onPress={() => {
+              if (!filteredCustomers) return;
+              const all = filteredCustomers.every(c => selected[c.id]);
+              if (all) { setSelected({}); return; }
+              const next: Record<string, boolean> = {};
+              filteredCustomers.forEach(c => { next[c.id] = true; });
+              setSelected(next);
+            }} testID="select-all" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, backgroundColor: '#EFF6FF' }}>
+              <Ionicons name={filteredCustomers && filteredCustomers.every(c => selected[c.id]) ? 'checkbox' : 'square-outline'} size={18} color={colors.brandPrimary} />
+              <Text style={{ color: colors.brandPrimary, fontWeight: '800', fontSize: 12 }}>{filteredCustomers && filteredCustomers.every(c => selected[c.id]) ? 'Deselect' : 'Select All'}</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.h1}>Business</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {isAdmin && seg === 'customers' ? (
+                <Pressable testID="enter-select" onPress={() => setSelectMode(true)} style={[styles.addBtn, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="checkbox-outline" size={22} color={colors.brandPrimary} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                testID="add-btn"
+                style={styles.addBtn}
+                onPress={() => router.push(seg === 'customers' ? '/customers/new' as any : '/accounts/new' as any)}
+              >
+                <Ionicons name="add" size={22} color={colors.onBrandPrimary} />
+              </Pressable>
+            </View>
+          </>
+        )}
       </View>
       <View style={styles.segments}>
         <Pressable testID="seg-customers" onPress={() => setSeg('customers')} style={[styles.seg, seg === 'customers' && styles.segActive]}>
@@ -134,10 +185,20 @@ export default function BusinessScreen() {
               const dscWarn = dscDays !== null && dscDays <= 30;
               const dscExpired = dscDays !== null && dscDays < 0;
               return (
-                <Pressable onPress={() => router.push(`/customers/${item.id}` as any)} testID={`customer-${item.id}`}>
-                  <Card style={dscWarn ? { borderColor: dscExpired ? colors.error : colors.warning, borderWidth: 2 } : undefined}>
+                <Pressable
+                  onPress={() => selectMode ? toggleSel(item.id) : router.push(`/customers/${item.id}` as any)}
+                  onLongPress={() => { if (isAdmin) { setSelectMode(true); setSelected({ [item.id]: true }); } }}
+                  testID={`customer-${item.id}`}
+                >
+                  <Card style={selectMode && selected[item.id] ? { borderColor: colors.brandPrimary, borderWidth: 2 } : (dscWarn ? { borderColor: dscExpired ? colors.error : colors.warning, borderWidth: 2 } : undefined)}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                      <Avatar name={item.name} />
+                      {selectMode ? (
+                        <Pressable onPress={() => toggleSel(item.id)} testID={`check-${item.id}`} hitSlop={8}>
+                          <Ionicons name={selected[item.id] ? 'checkbox' : 'square-outline'} size={24} color={selected[item.id] ? colors.brandPrimary : colors.muted} />
+                        </Pressable>
+                      ) : (
+                        <Avatar name={item.name} />
+                      )}
                       <View style={{ flex: 1 }}>
                         <Text style={styles.itemTitle}>{item.name}</Text>
                         {item.customer_code ? <Text style={[styles.muted, { color: colors.brandPrimary, fontWeight: '700' }]}>{item.customer_code}</Text> : null}
@@ -154,8 +215,13 @@ export default function BusinessScreen() {
                       ) : null}
                       {item.gst_no ? <View style={styles.gstTag}><Text style={styles.gstText}>GST</Text></View> : null}
                     </View>
-                    {(canEdit || isAdmin) ? (
+                    {(canEdit || isAdmin) && !selectMode ? (
                       <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 8 }}>
+                        <Pressable testID={`print-${item.id}`} onPress={(e) => { e?.stopPropagation?.(); printCustomer(item); }}
+                          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#EFF6FF', paddingVertical: 8, borderRadius: 6 }}>
+                          <Ionicons name="print" size={14} color={colors.brandPrimary} />
+                          <Text style={{ color: colors.brandPrimary, fontWeight: '800', fontSize: 12 }}>Print</Text>
+                        </Pressable>
                         {canEdit ? (
                           <Pressable testID={`edit-${item.id}`} onPress={(e) => { e?.stopPropagation?.(); router.push({ pathname: '/customers/new', params: { edit_id: item.id } } as any); }}
                             style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingVertical: 8, borderRadius: 6 }}>
@@ -210,6 +276,23 @@ export default function BusinessScreen() {
         )
       )}
     </SafeAreaView>
+      {selectMode ? (
+        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 8, padding: 16, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: colors.border }} testID="bulk-bar">
+          <Pressable onPress={exitSelect} testID="bulk-cancel" style={{ flex: 1, paddingVertical: 14, borderRadius: 8, alignItems: 'center', backgroundColor: colors.surfaceSecondary }}>
+            <Text style={{ color: colors.onSurface, fontWeight: '700' }}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            testID="bulk-delete"
+            disabled={selectedCount === 0 || busyBulk}
+            onPress={bulkDelete}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 8, backgroundColor: colors.error, opacity: selectedCount === 0 || busyBulk ? 0.5 : 1 }}
+          >
+            <Ionicons name="trash" size={16} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: '800' }}>{busyBulk ? 'Deleting…' : `Delete Selected (${selectedCount})`}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </>
   );
 }
 

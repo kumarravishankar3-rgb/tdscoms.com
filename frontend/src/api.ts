@@ -70,6 +70,10 @@ export const api = {
     const token = await tokenStore.get();
     return `${BASE}/api/invoices/${iid}/pdf?token=${encodeURIComponent(token || '')}`;
   },
+  customerPdfUrl: async (cid: string) => {
+    const token = await tokenStore.get();
+    return `${BASE}/api/customers/${cid}/pdf?token=${encodeURIComponent(token || '')}`;
+  },
   put: <T>(p: string, body: any) => request<T>(p, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
   base: BASE,

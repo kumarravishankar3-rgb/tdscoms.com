@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 15 – backend verification of Customer Print PDF (GET /api/customers/{cid}/pdf) and Bulk-Delete (POST /api/customers/bulk-delete) plus iteration_14 role-gate regression on PUT/DELETE /api/customers/{cid}. 21/21 pytest tests PASSED against http://localhost:8001. PDF endpoint returns 200 application/pdf, Content-Disposition inline with filename matching ^TDSC-CUST-ID-\\d{8}\\.pdf$, body starts with %PDF- and >2 KB for admin/manager/employee via Bearer header AND ?token=<admin_token> query. Missing token -> 401, invalid token -> 401, invalid cid -> 404. Bulk-delete: admin only – created 3 fresh customers (mobiles 9111100011/22/33 -> c1/c2/c3); manager 403 (all 3 preserved), employee 403, admin {ids:[c1,c2]} -> 200 {deleted:2} with c1/c2 -> 404 and c3 still 200, empty ids -> 200 {deleted:0}, non-existent ids -> 200 {deleted:0}, c3 cleaned up. Regression: manager PUT 200, employee PUT 403, manager DELETE 403 (customer preserved), employee DELETE 403, admin DELETE 200.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_customer_pdf_bulk_iter15.py",
+    "/app/test_reports/pytest/iter15_customer_pdf_bulk.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "POST /api/customers/bulk-delete (server.py:1159) accepts an untyped `dict`; consider a Pydantic `BulkDeleteInput` model so payload validation errors surface as 422 rather than a silent {deleted:0} for missing/misnamed keys.",
+    "GET /api/customers/{cid}/pdf (server.py:1168-1186) does NOT resolve the session into a `User` object and therefore cannot enforce role-based print restrictions in the future; today the requirement is all-roles-can-print so this is correct behaviour, but if per-role print rules ever appear, this endpoint bypasses `get_current_user`/role helpers entirely. The same shortcut is used by /api/invoices/{iid}/pdf (server.py:2145) – consistent, but flagging.",
+    "Bulk-delete returns HTTP 200 with `{deleted:0}` for both empty payload and totally unknown ids. Behaviour is spec-conformant per this iteration's request, but it means the client cannot distinguish 'sent nothing' from 'sent invalid ids' – consider echoing back not-found ids (`{deleted:2, not_found:[...]}`) for better UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_customer_pdf_bulk_iter15.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "seed_data_creation": "Test creates and cleans up its own data: 3 quick customers for bulk-delete (BulkDelIter15-1/2/3, mobiles 9111100011/22/33), 1 quick customer for regression (RegressIter15, mobile 9111100099). If duplicates already exist from a previous run the test first deletes them (using admin token) and recreates. All created customers are removed by end of the module.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend base http://localhost:8001. Login: POST /api/auth/login -> {session_token}, use as Bearer token. Customer PDF: server.py:1168 – requires token via Authorization header OR ?token= query, no role gate; filename = `{customer_code}.pdf` which matches TDSC-CUST-ID-XXXXXXXX.pdf for quick-created customers. Bulk delete: server.py:1159 – require_admin, untyped dict body {ids:[...]}. Quick create: server.py:1071 – 409 on duplicate mobile/PAN/Aadhar/GST/email with detail.existing.id available for cleanup. Run tests SEQUENTIALLY with `pytest -o addopts=\"\"` because pytest.ini enables xdist; the module-level STATE dict shared across classes will break under -n auto.",
+  "rca_of_issue": "N/A – all scenarios verified green on first run."
+}

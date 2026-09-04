@@ -18,9 +18,9 @@ import requests
 
 BASE_URL = "http://localhost:8001"
 
-ADMIN = ("admin@triveni.com", "Admin@123")
-MANAGER = ("manager@triveni.com", "Manager@123")
-EMPLOYEE = ("employee@triveni.com", "Employee@123")
+ADMIN = (os.environ["TEST_ADMIN_EMAIL"], os.environ["TEST_ADMIN_PASSWORD"])
+MANAGER = (os.environ["TEST_MANAGER_EMAIL"], os.environ["TEST_MANAGER_PASSWORD"])
+EMPLOYEE = (os.environ["TEST_EMPLOYEE_EMAIL"], os.environ["TEST_EMPLOYEE_PASSWORD"])
 
 
 # ---------- fixtures ----------

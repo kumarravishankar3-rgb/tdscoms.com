@@ -22,7 +22,7 @@ BASE_URL = os.environ.get("TEST_BASE_URL") \
     or "http://localhost:8001"
 BASE_URL = BASE_URL.rstrip("/")
 
-ADMIN = {"email": "admin@triveni.com", "password": "Admin@123"}
+ADMIN = {"email": os.environ["TEST_ADMIN_EMAIL"], "password": os.environ["TEST_ADMIN_PASSWORD"]}
 
 
 @pytest.fixture(scope="module")

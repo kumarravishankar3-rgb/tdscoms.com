@@ -2955,9 +2955,16 @@ async def api_health():
     return {"status": "ok"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 async def app_health():
     return {"status": "ok"}
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def app_root():
+    """Root handler for Kubernetes/LB probes that hit '/' on the backend port.
+    Returns 200 so the load balancer keeps the container marked healthy."""
+    return {"service": "Triveni Business Manager API", "status": "ok"}
 
 
 # ============ Startup ============

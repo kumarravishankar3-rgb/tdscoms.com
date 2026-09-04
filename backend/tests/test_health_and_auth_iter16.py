@@ -1,3 +1,4 @@
+import os
 """
 Iteration 16 – Deployment blocker fix verification.
 
@@ -23,9 +24,9 @@ import requests
 
 BASE_URL = "http://localhost:8001"
 
-ADMIN = {"email": "admin@triveni.com", "password": "Admin@123"}
-MANAGER = {"email": "manager@triveni.com", "password": "Manager@123"}
-EMPLOYEE = {"email": "employee@triveni.com", "password": "Employee@123"}
+ADMIN = {"email": os.environ["TEST_ADMIN_EMAIL"], "password": os.environ["TEST_ADMIN_PASSWORD"]}
+MANAGER = {"email": os.environ["TEST_MANAGER_EMAIL"], "password": os.environ["TEST_MANAGER_PASSWORD"]}
+EMPLOYEE = {"email": os.environ["TEST_EMPLOYEE_EMAIL"], "password": os.environ["TEST_EMPLOYEE_PASSWORD"]}
 
 STATE: dict = {}
 

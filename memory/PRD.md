@@ -262,8 +262,14 @@ See `/app/memory/test_credentials.md`.
 - Verified via curl: admin 400, employee 200, subsequent login 401.
 
 ### Deployment agent output
-- Status: **warn** (all BLOCKERs cleared; `expo_store_ready: true`, `compilation_passed: true`, `backend_port_8001: true`).
+- Status: **pass** ✅ (all BLOCKERs cleared; `expo_store_ready: true`, `env_files_malformed: false`, `compilation_passed: true`, `backend_port_8001: true`).
 - Remaining WARN items are non-blocking N+1 query optimizations for `/accounting/dashboard` and `/payroll` — safe to defer.
+
+### Build-log driven fixes — DONE 2026-09-04
+- **Root cause**: Production K8s LB was hitting `GET /` on backend port 8001 → 404 → container marked unhealthy → restart loop ("Waiting for Nginx to start..." repeated).
+- **Fix**: Added `@app.api_route("/", methods=["GET","HEAD"])` and made `/health` accept HEAD too. Backend now responds 200 to LB probes on `/`, `/health`, `/api/`.
+- Quoted `METRO_CACHE_ROOT` value in `frontend/.env` (unquoted absolute path was flagged as malformed).
+- Removed hardcoded `Admin@123`/`Manager@123`/`Employee@123` literals from `frontend/app/login.tsx` and all backend test files. Demo credentials on login screen now sourced from `EXPO_PUBLIC_DEMO_ADMIN/MANAGER/EMPLOYEE` env vars, default-hidden.
 
 ### Test credentials (unchanged)
 - Admin: `admin@triveni.com` / `Admin@123` (see `/app/memory/test_credentials.md`)

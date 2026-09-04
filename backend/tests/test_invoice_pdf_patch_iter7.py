@@ -13,10 +13,10 @@ from datetime import date, timedelta
 
 BASE_URL = "http://localhost:8001"
 
-ADMIN_EMAIL = "admin@triveni.com"
-ADMIN_PASSWORD = "Admin@123"
-EMPLOYEE_EMAIL = "employee@triveni.com"
-EMPLOYEE_PASSWORD = "Employee@123"
+ADMIN_EMAIL = os.environ["TEST_ADMIN_EMAIL"]
+ADMIN_PASSWORD = os.environ["TEST_ADMIN_PASSWORD"]
+EMPLOYEE_EMAIL = os.environ["TEST_EMPLOYEE_EMAIL"]
+EMPLOYEE_PASSWORD = os.environ["TEST_EMPLOYEE_PASSWORD"]
 
 
 # ---------- Fixtures ----------

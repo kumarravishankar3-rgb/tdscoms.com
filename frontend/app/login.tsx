@@ -93,12 +93,18 @@ export default function LoginScreen() {
               <Text style={styles.googleText}>Continue with Google</Text>
             </Pressable>
 
-            {String(process.env.EXPO_PUBLIC_SHOW_DEMO_CREDS || 'true').toLowerCase() === 'true' ? (
+            {String(process.env.EXPO_PUBLIC_SHOW_DEMO_CREDS || 'false').toLowerCase() === 'true' ? (
               <View style={styles.demoBox}>
                 <Text style={styles.demoTitle}>Demo credentials</Text>
-                <Text style={styles.demoText}>Admin: admin@triveni.com / Admin@123</Text>
-                <Text style={styles.demoText}>Manager: manager@triveni.com / Manager@123</Text>
-                <Text style={styles.demoText}>Employee: employee@triveni.com / Employee@123</Text>
+                {process.env.EXPO_PUBLIC_DEMO_ADMIN ? (
+                  <Text style={styles.demoText}>Admin: {process.env.EXPO_PUBLIC_DEMO_ADMIN}</Text>
+                ) : null}
+                {process.env.EXPO_PUBLIC_DEMO_MANAGER ? (
+                  <Text style={styles.demoText}>Manager: {process.env.EXPO_PUBLIC_DEMO_MANAGER}</Text>
+                ) : null}
+                {process.env.EXPO_PUBLIC_DEMO_EMPLOYEE ? (
+                  <Text style={styles.demoText}>Employee: {process.env.EXPO_PUBLIC_DEMO_EMPLOYEE}</Text>
+                ) : null}
               </View>
             ) : null}
           </View>

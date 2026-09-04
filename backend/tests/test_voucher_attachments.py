@@ -23,7 +23,7 @@ BASE_URL = os.environ.get("TEST_BASE_URL") \
     or "https://hr-tender-hub.preview.emergentagent.com"
 BASE_URL = BASE_URL.rstrip("/")
 
-ADMIN = {"email": "admin@triveni.com", "password": "Admin@123"}
+ADMIN = {"email": os.environ["TEST_ADMIN_EMAIL"], "password": os.environ["TEST_ADMIN_PASSWORD"]}
 
 
 # -----------------------

@@ -17,7 +17,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("TEST_BASE_URL", "http://localhost:8001").rstrip("/")
-ADMIN = {"email": "admin@triveni.com", "password": "Admin@123"}
+ADMIN = {"email": os.environ["TEST_ADMIN_EMAIL"], "password": os.environ["TEST_ADMIN_PASSWORD"]}
 
 CODE_RE = re.compile(r"^TDSC-CUST-ID-\d{8}$")
 LEGACY_RE = re.compile(r"^TRV-CUST-")
